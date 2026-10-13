@@ -4,6 +4,7 @@ package snapshot
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
 )
@@ -65,6 +66,7 @@ type File struct {
 
 // Field names used as keys in Repo.Errors.
 const (
+	FieldRepo          = "repo" // the repository itself; every check is unknown
 	FieldSecurity      = "security"
 	FieldVulnReporting = "vulnReporting"
 	FieldRules         = "rules"
@@ -83,7 +85,7 @@ func (r Repo) HasRule(t string) bool {
 }
 
 // RequiredChecks returns every required status check across all rules.
-func (r Repo) RequiredChecks() []RequiredCheck {
+func (r Repo) RequiredChecks() ([]RequiredCheck, error) {
 	var out []RequiredCheck
 	for _, rule := range r.Rules {
 		if rule.Type != "required_status_checks" {
@@ -92,11 +94,12 @@ func (r Repo) RequiredChecks() []RequiredCheck {
 		var p struct {
 			Checks []RequiredCheck `json:"required_status_checks"`
 		}
-		if json.Unmarshal(rule.Parameters, &p) == nil {
-			out = append(out, p.Checks...)
+		if err := json.Unmarshal(rule.Parameters, &p); err != nil {
+			return nil, fmt.Errorf("ruleset %d: required_status_checks parameters: %w", rule.RulesetID, err)
 		}
+		out = append(out, p.Checks...)
 	}
-	return out
+	return out, nil
 }
 
 // Load reads a snapshot from a JSON file.
@@ -107,7 +110,7 @@ func Load(path string) (*Snapshot, error) {
 	}
 	var s Snapshot
 	if err := json.Unmarshal(b, &s); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &s, nil
 }

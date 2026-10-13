@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackson-asmith/gh-baseline/internal/ghapi"
 	"github.com/jackson-asmith/gh-baseline/internal/snapshot"
@@ -24,9 +26,13 @@ func fakeAPI(t *testing.T) *httptest.Server {
 			"security_and_analysis":{"secret_scanning":{"status":"enabled"}}%s}`, name, extra)
 	}
 	routes := map[string]string{
-		"/users/me/repos": "[" + repo("app", "") + "," + repo("forked", `,"fork":true`) + "," +
+		"/user": `{"login":"me"}`,
+		// The token's own account is listed from /user/repos; /users/me/repos
+		// would only return public repositories.
+		"/user/repos": "[" + repo("app", `,"private":true`) + "," + repo("forked", `,"fork":true`) + "," +
 			repo("old", `,"archived":true`) + "]",
-		"/repos/me/app": repo("app", ""),
+		"/users/me/repos": "[]",
+		"/repos/me/app":   repo("app", ""),
 		"/repos/me/app/private-vulnerability-reporting":   `{"enabled":true}`,
 		"/repos/me/app/rules/branches/main":               `[{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test","integration_id":15368}]}}]`,
 		"/repos/me/app/contents/.github/workflows":        `[{"path":".github/workflows/ci.yml","type":"file"},{"path":".github/workflows/README.md","type":"file"}]`,
@@ -77,7 +83,8 @@ func TestCollectListsAndFilters(t *testing.T) {
 	if r.VulnReporting == nil || !*r.VulnReporting {
 		t.Errorf("vulnReporting = %v", r.VulnReporting)
 	}
-	if !r.HasRule("deletion") || len(r.RequiredChecks()) != 1 || *r.RequiredChecks()[0].IntegrationID != 15368 {
+	checks, err := r.RequiredChecks()
+	if err != nil || !r.HasRule("deletion") || len(checks) != 1 || *checks[0].IntegrationID != 15368 {
 		t.Errorf("rules = %+v", r.Rules)
 	}
 	if len(r.Workflows) != 1 || r.Workflows[0].Content != "permissions: {}\n" {
@@ -113,12 +120,92 @@ func TestCollectRecordsUnreadableFields(t *testing.T) {
 	}
 }
 
-func TestCollectFailsWhenRepoMissing(t *testing.T) {
+func TestCollectRecordsMissingRepoAndContinues(t *testing.T) {
 	srv := fakeAPI(t)
 	defer srv.Close()
 
-	_, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"ghost"}})
-	if err == nil || !strings.Contains(err.Error(), "me/ghost") {
-		t.Errorf("want an error naming the repo, got %v", err)
+	snap, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"ghost", "app"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Repos) != 2 {
+		t.Fatalf("want ghost and app, got %+v", snap.Repos)
+	}
+	if ghost := snap.Repos[0]; ghost.Name != "ghost" || !strings.Contains(ghost.Errors[snapshot.FieldRepo], "404") {
+		t.Errorf("ghost = %+v, want a recorded 404", ghost)
+	}
+	if app := snap.Repos[1]; app.Errors != nil {
+		t.Errorf("app errors = %v, want none", app.Errors)
+	}
+}
+
+func TestCollectStopsWhenContextEnds(t *testing.T) {
+	srv := fakeAPI(t)
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := newCollector(srv).Collect(ctx, Options{Owner: "me", Repos: []string{"app"}}); err == nil {
+		t.Error("Collect(cancelled ctx) = nil error, want failure")
+	}
+}
+
+func TestListReposEndpointByAccount(t *testing.T) {
+	tests := []struct {
+		owner, want string
+	}{
+		{"me", "/user/repos"},
+		{"ME", "/user/repos"},
+		{"acme", "/orgs/acme/repos"},
+		{"someone", "/users/someone/repos"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.owner, func(t *testing.T) {
+			var listed string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/user":
+					fmt.Fprint(w, `{"login":"me"}`)
+				case "/users/acme":
+					fmt.Fprint(w, `{"type":"Organization"}`)
+				case "/users/someone":
+					fmt.Fprint(w, `{"type":"User"}`)
+				default:
+					listed = r.URL.Path
+					fmt.Fprint(w, `[]`)
+				}
+			}))
+			defer srv.Close()
+
+			if _, err := newCollector(srv).Collect(context.Background(), Options{Owner: tt.owner}); err != nil {
+				t.Fatal(err)
+			}
+			if listed != tt.want {
+				t.Errorf("Collect(owner %q) listed %q, want %q", tt.owner, listed, tt.want)
+			}
+		})
+	}
+}
+
+func TestCollectStopsOnRateLimit(t *testing.T) {
+	reset := strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/me/app":
+			fmt.Fprint(w, `{"name":"app","default_branch":"main"}`)
+		case "/repos/me/app/private-vulnerability-reporting":
+			fmt.Fprint(w, `{"enabled":true}`)
+		default: // the budget runs out partway through the repo
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.Header().Set("X-RateLimit-Reset", reset)
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, `{"message":"API rate limit exceeded"}`)
+		}
+	}))
+	defer srv.Close()
+
+	_, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"app"}})
+	if !ghapi.IsRateLimited(err) {
+		t.Errorf("Collect() error = %v, want a rate limit error, not a recorded field error", err)
 	}
 }

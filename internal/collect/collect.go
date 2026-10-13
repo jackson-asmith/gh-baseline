@@ -23,8 +23,7 @@ type Options struct {
 
 // Collector gathers snapshots.
 type Collector struct {
-	API  *ghapi.Client
-	Host string
+	API *ghapi.Client
 }
 
 type apiRepo struct {
@@ -54,23 +53,37 @@ func (c *Collector) Collect(ctx context.Context, opt Options) (*snapshot.Snapsho
 		skip[strings.ToLower(e)] = true
 	}
 
-	snap := &snapshot.Snapshot{GeneratedAt: time.Now().UTC(), Host: c.Host, Owner: opt.Owner}
+	snap := &snapshot.Snapshot{GeneratedAt: time.Now().UTC(), Host: c.API.Host, Owner: opt.Owner}
 	for _, name := range names {
 		if skip[strings.ToLower(name)] {
 			continue
 		}
 		r, err := c.repo(ctx, opt.Owner, name)
 		if err != nil {
-			return nil, fmt.Errorf("%s/%s: %w", opt.Owner, name, err)
+			if fatal(ctx, err) {
+				return nil, fmt.Errorf("%s/%s: %w", opt.Owner, name, err)
+			}
+			// Record the failure and keep going; one unreadable repo
+			// shouldn't hide the results for the rest.
+			r = snapshot.Repo{Name: name, Errors: map[string]string{snapshot.FieldRepo: err.Error()}}
 		}
 		snap.Repos = append(snap.Repos, r)
 	}
 	return snap, nil
 }
 
+// fatal reports whether err should stop the whole run rather than be recorded
+// against one repository: every later request would fail the same way.
+func fatal(ctx context.Context, err error) bool {
+	return ctx.Err() != nil || ghapi.IsRateLimited(err)
+}
+
 func (c *Collector) listRepos(ctx context.Context, opt Options) ([]string, error) {
+	next, err := c.reposPath(ctx, opt.Owner)
+	if err != nil {
+		return nil, err
+	}
 	var names []string
-	next := fmt.Sprintf("users/%s/repos?type=owner&per_page=100", url.PathEscape(opt.Owner))
 	for next != "" {
 		var page []apiRepo
 		n, err := c.API.Get(ctx, next, &page)
@@ -86,6 +99,32 @@ func (c *Collector) listRepos(ctx context.Context, opt Options) ([]string, error
 		next = n
 	}
 	return names, nil
+}
+
+// reposPath picks the listing endpoint for owner. /users/{owner}/repos returns
+// only public repositories, even for the token's own account, so the
+// authenticated user and organizations need their own endpoints.
+func (c *Collector) reposPath(ctx context.Context, owner string) (string, error) {
+	var me struct {
+		Login string `json:"login"`
+	}
+	if _, err := c.API.Get(ctx, "user", &me); err != nil {
+		return "", fmt.Errorf("identify the token's user: %w", err)
+	}
+	if strings.EqualFold(me.Login, owner) {
+		return "user/repos?affiliation=owner&per_page=100", nil
+	}
+	var account struct {
+		Type string `json:"type"`
+	}
+	if _, err := c.API.Get(ctx, "users/"+url.PathEscape(owner), &account); err != nil {
+		return "", err
+	}
+	if account.Type == "Organization" {
+		return fmt.Sprintf("orgs/%s/repos?type=all&per_page=100", url.PathEscape(owner)), nil
+	}
+	// Another user's private repositories aren't listable by anyone else.
+	return fmt.Sprintf("users/%s/repos?type=owner&per_page=100", url.PathEscape(owner)), nil
 }
 
 func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo, error) {
@@ -117,6 +156,9 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		Enabled bool `json:"enabled"`
 	}
 	if _, err := c.API.Get(ctx, base+"/private-vulnerability-reporting", &pvr); err != nil {
+		if fatal(ctx, err) {
+			return snapshot.Repo{}, err
+		}
 		r.Errors[snapshot.FieldVulnReporting] = err.Error()
 	} else {
 		r.VulnReporting = &pvr.Enabled
@@ -124,12 +166,18 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 
 	rules, err := c.rules(ctx, base+"/rules/branches/"+url.PathEscape(ar.DefaultBranch))
 	if err != nil {
+		if fatal(ctx, err) {
+			return snapshot.Repo{}, err
+		}
 		r.Errors[snapshot.FieldRules] = err.Error()
 	}
 	r.Rules = rules
 
 	wf, err := c.workflows(ctx, base)
 	if err != nil {
+		if fatal(ctx, err) {
+			return snapshot.Repo{}, err
+		}
 		r.Errors[snapshot.FieldWorkflows] = err.Error()
 	}
 	r.Workflows = wf
@@ -139,6 +187,9 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		if err == nil {
 			r.Dependabot = f
 			break
+		}
+		if fatal(ctx, err) {
+			return snapshot.Repo{}, err
 		}
 		if !ghapi.IsNotFound(err) {
 			r.Errors[snapshot.FieldDependabot] = err.Error()
@@ -197,7 +248,7 @@ func (c *Collector) file(ctx context.Context, base, path string) (*snapshot.File
 		Content  string `json:"content"`
 		Encoding string `json:"encoding"`
 	}
-	if _, err := c.API.Get(ctx, base+"/contents/"+path, &f); err != nil {
+	if _, err := c.API.Get(ctx, base+"/contents/"+escapePath(path), &f); err != nil {
 		return nil, err
 	}
 	if f.Encoding != "base64" {
@@ -208,4 +259,13 @@ func (c *Collector) file(ctx context.Context, base, path string) (*snapshot.File
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &snapshot.File{Path: path, Content: string(b)}, nil
+}
+
+// escapePath escapes each segment of a slash-separated repository path.
+func escapePath(p string) string {
+	segs := strings.Split(p, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
 }

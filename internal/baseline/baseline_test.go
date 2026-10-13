@@ -49,6 +49,7 @@ func TestLoadRejectsInvalid(t *testing.T) {
 		"repo unknown tier": `{"defaultTier":"basic","tiers":{"basic":{}},"repos":{"r":"ci"}}`,
 		"bad staleDays":     `{"defaultTier":"basic","tiers":{"basic":{}},"staleDays":-1}`,
 		"not json":          `{`,
+		"duplicate repo":    `{"defaultTier":"basic","tiers":{"basic":{},"ci":{}},"repos":{"Foo":"basic","foo":"ci"}}`,
 	}
 	for name, body := range tests {
 		t.Run(name, func(t *testing.T) {

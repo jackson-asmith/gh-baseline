@@ -45,6 +45,15 @@ collect ──▶ snapshot (JSON) ──▶ evaluate ──▶ report
    private vulnerability reporting, the workflow files, and `dependabot.yml`.
    An endpoint that refuses access records an error for that field instead of
    failing the run.
+   A repository that can't be read at all is recorded the same way, and
+   every check on it reports `unknown`.
+
+   Transient failures (408, 429, 5xx, and 403 secondary rate limits) are
+   retried up to three times with exponential backoff and jitter, honoring
+   `Retry-After` up to 60 seconds. This is the same policy as keel.Http's
+   `Invoke-WithBoundedRetry`. An exhausted hourly rate limit that won't reset
+   within 60 seconds stops the run (exit 2) and reports when it resets, rather
+   than marking every remaining repository `unknown`.
 2. **Snapshot.** Everything collected goes into one JSON document. Checks
    never touch the network, so they are tested against recorded fixtures,
    and a saved snapshot can be re-evaluated (`--snapshot`) after editing the
@@ -93,7 +102,7 @@ pushes.
 | `security.push-protection` | high | Push protection is off (public repos) |
 | `security.vuln-reporting` | low | Private vulnerability reporting is off (public repos) |
 | `workflow.token-permissions` | medium | A workflow has no top-level `permissions:` |
-| `workflow.pinned-actions` | medium | A third-party action is referenced by tag or branch |
+| `workflow.pinned-actions` | medium | An action is referenced by tag or branch instead of a commit SHA |
 | `workflow.dependabot-actions` | low | Workflows exist but Dependabot doesn't update them |
 | `workflow.stale-secrets` | high | No push in `staleDays` and workflows reference secrets |
 

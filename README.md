@@ -60,7 +60,14 @@ gh baseline --baseline baseline.json --format json
 ```
 
 Exit codes: `0` nothing failed, `1` at least one check failed, `2` the run
-itself failed. `unknown` results don't fail the run, but they're listed.
+itself failed. `unknown` results don't fail the run, but they're listed. A
+repository that can't be read at all is reported as `unknown` for every check
+rather than stopping the run. Transient API errors are retried; an exhausted
+rate limit stops the run with exit `2` and says when it resets.
+
+When `--owner` is the account `gh` is logged in as, or an organization you
+belong to, private repositories are included. For any other user, GitHub only
+lists their public repositories.
 
 GitHub Enterprise works through `GH_HOST` or `--hostname`.
 
@@ -114,7 +121,9 @@ matter which ruleset (or how many) provides them.
 - **Read-only.** It never changes a repository; every failure comes with a fix.
 - **Honest about blind spots.** If the API won't show something, the result is
   `unknown`, never `pass`. Malware alerts and default workflow-token
-  permissions aren't visible to it at all.
+  permissions aren't visible to it at all. The one exception: private repos
+  on a free plan can't have rulesets, so the ruleset checks skip them instead
+  of reporting `unknown`.
 - **No dependencies.** Standard library only. A tool for auditing supply-chain
   settings shouldn't bring its own supply chain.
 - **Checks are pure functions** of a saved snapshot, so they're tested against

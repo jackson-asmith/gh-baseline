@@ -14,7 +14,7 @@ var now = time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 
 func byID(t *testing.T, id string) Check {
 	t.Helper()
-	for _, c := range Catalog {
+	for _, c := range catalog {
 		if c.ID == id {
 			return c
 		}
@@ -26,7 +26,10 @@ func byID(t *testing.T, id string) Check {
 func rule(typ string, params any) snapshot.Rule {
 	r := snapshot.Rule{Type: typ}
 	if params != nil {
-		b, _ := json.Marshal(params)
+		b, err := json.Marshal(params)
+		if err != nil {
+			panic(err) // test fixtures are static; this can't happen
+		}
 		r.Parameters = b
 	}
 	return r
@@ -67,11 +70,14 @@ func healthy() snapshot.Repo {
 	}
 }
 
+// planLimited is the error GitHub returns for rules on a free plan's private repo.
+const planLimited = "HTTP 403: Upgrade to GitHub Pro or make this repository public to enable this feature."
+
 var ciTier = baseline.Tier{RequirePullRequest: true, RequireStatusChecks: true}
 
 func TestHealthyRepoPassesEverything(t *testing.T) {
 	in := Input{Repo: healthy(), Tier: ciTier, Now: now, StaleDays: 365}
-	for _, c := range Catalog {
+	for _, c := range catalog {
 		if st, msg := c.Run(in); st != Pass {
 			t.Errorf("%s: got %s (%s), want pass", c.ID, st, msg)
 		}
@@ -89,6 +95,27 @@ func TestChecks(t *testing.T) {
 		{"ruleset.branch-safety", func(r *snapshot.Repo) { r.Rules = nil }, ciTier, Fail, "deletion and force push"},
 		{"ruleset.branch-safety", func(r *snapshot.Repo) { r.Rules = r.Rules[:1] }, ciTier, Fail, "force push"},
 		{"ruleset.branch-safety", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": "HTTP 403"} }, ciTier, Unknown, "HTTP 403"},
+		{"ruleset.branch-safety", func(r *snapshot.Repo) {
+			r.Private = true
+			r.Errors = map[string]string{"rules": planLimited}
+		}, ciTier, Skip, "paid plan"},
+		{"ruleset.branch-safety", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": planLimited} }, ciTier, Unknown, "HTTP 403"}, // public: not a plan limit
+		{"ruleset.branch-safety", func(r *snapshot.Repo) {
+			r.Private = true
+			r.Errors = map[string]string{"rules": "HTTP 403: Resource not accessible by personal access token"}
+		}, ciTier, Unknown, "personal access token"},
+		{"ruleset.pull-request", func(r *snapshot.Repo) {
+			r.Private = true
+			r.Errors = map[string]string{"rules": planLimited}
+		}, ciTier, Skip, "paid plan"},
+		{"ruleset.status-checks", func(r *snapshot.Repo) {
+			r.Private = true
+			r.Errors = map[string]string{"rules": planLimited}
+		}, ciTier, Skip, "paid plan"},
+		{"ruleset.check-source", func(r *snapshot.Repo) {
+			r.Private = true
+			r.Errors = map[string]string{"rules": planLimited}
+		}, ciTier, Skip, "paid plan"},
 
 		{"ruleset.pull-request", func(r *snapshot.Repo) { r.Rules = r.Rules[:2] }, ciTier, Fail, "without a pull request"},
 		{"ruleset.pull-request", func(r *snapshot.Repo) { r.Rules = nil }, baseline.Tier{}, Skip, ""},
@@ -114,7 +141,11 @@ func TestChecks(t *testing.T) {
 		{"workflow.dependabot-actions", func(r *snapshot.Repo) { r.Dependabot = nil }, ciTier, Fail, "no dependabot.yml"},
 		{"workflow.dependabot-actions", func(r *snapshot.Repo) { r.Dependabot.Content = "- package-ecosystem: pip\n" }, ciTier, Fail, "github-actions"},
 
+		{"ruleset.check-source", func(r *snapshot.Repo) { r.Rules[3].Parameters = []byte(`{"required_status_checks":"oops"}`) }, ciTier, Unknown, "required_status_checks"},
+		{"ruleset.status-checks", func(r *snapshot.Repo) { r.Rules[3].Parameters = []byte(`not json`) }, ciTier, Unknown, "required_status_checks"},
+
 		{"workflow.stale-secrets", func(r *snapshot.Repo) { r.PushedAt = now.AddDate(-3, 0, 0) }, ciTier, Fail, "TOKEN"},
+		{"workflow.stale-secrets", func(r *snapshot.Repo) { r.PushedAt = time.Time{} }, ciTier, Unknown, "no push date"},
 		{"workflow.stale-secrets", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Workflows[0].Content = "permissions: {}\n"
@@ -135,6 +166,16 @@ func TestChecks(t *testing.T) {
 	}
 }
 
+func TestEvaluateUnreadableRepoIsUnknown(t *testing.T) {
+	r := snapshot.Repo{Name: "ghost", Errors: map[string]string{snapshot.FieldRepo: "HTTP 502"}}
+	b := &baseline.Baseline{DefaultTier: "basic", Tiers: map[string]baseline.Tier{"basic": {}}, StaleDays: 365}
+	for _, f := range Evaluate(&snapshot.Snapshot{Repos: []snapshot.Repo{r}}, b, now) {
+		if f.Status != Unknown || !strings.Contains(f.Message, "HTTP 502") {
+			t.Errorf("%s: got %s (%s), want unknown mentioning HTTP 502", f.Check, f.Status, f.Message)
+		}
+	}
+}
+
 func TestEvaluateUsesTierAndAddsRemediation(t *testing.T) {
 	bare := healthy()
 	bare.Name = "Scratch"
@@ -148,8 +189,8 @@ func TestEvaluateUsesTierAndAddsRemediation(t *testing.T) {
 	}
 	fs := Evaluate(&snapshot.Snapshot{Repos: []snapshot.Repo{healthy(), bare}}, b, now)
 
-	if len(fs) != 2*len(Catalog) {
-		t.Fatalf("got %d findings, want %d", len(fs), 2*len(Catalog))
+	if len(fs) != 2*len(catalog) {
+		t.Fatalf("got %d findings, want %d", len(fs), 2*len(catalog))
 	}
 	for _, f := range fs {
 		if f.Status == Fail || f.Status == Unknown {
