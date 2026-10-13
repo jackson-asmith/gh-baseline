@@ -8,10 +8,14 @@ import (
 // Workflow parsing is deliberately line-based: it understands conventionally
 // formatted YAML (top-level keys at column 0, one `uses:` per line). A YAML
 // parser is the upgrade path if this proves too loose.
+//
+// As in YAML, a key and its colon share a line, but a value may start on the
+// next line, and comment lines are ignored wherever they appear.
 
 var (
-	topLevelPermissions = regexp.MustCompile(`(?m)^permissions\s*:`)
-	usesLine            = regexp.MustCompile(`(?m)^\s*(?:-\s+)?uses\s*:\s*["']?([^\s"'#]+)`)
+	topLevelPermissions = regexp.MustCompile(`(?m)^permissions[ \t]*:`)
+	usesLine            = regexp.MustCompile(`(?m)^\s*(?:-\s+)?uses[ \t]*:\s*["']?([^\s"'#]+)`)
+	commentLine         = regexp.MustCompile(`(?m)^[ \t]*#.*$`)
 	secretRef           = regexp.MustCompile(`\$\{\{[^}]*\bsecrets\.([A-Za-z0-9_]+)`)
 	fullSHA             = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	dependabotActions   = regexp.MustCompile(`package-ecosystem\s*:\s*["']?github-actions\b`)
@@ -26,6 +30,7 @@ func hasTopLevelPermissions(content string) bool {
 // digest for Docker images. Local references (./...) are always fine.
 func unpinnedUses(content string) []string {
 	var out []string
+	content = commentLine.ReplaceAllString(content, "")
 	for _, m := range usesLine.FindAllStringSubmatch(content, -1) {
 		ref := m[1]
 		switch {

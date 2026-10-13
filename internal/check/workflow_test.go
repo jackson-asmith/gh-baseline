@@ -15,6 +15,7 @@ func TestHasTopLevelPermissions(t *testing.T) {
 		{"inline", "permissions: read-all\n", true},
 		{"job level only", "jobs:\n  build:\n    permissions:\n      contents: read\n", false},
 		{"none", "on: push\njobs: {}\n", false},
+		{"colon on the next line is not a key", "permissions\n:", false}, // found by FuzzHasTopLevelPermissions
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,6 +51,28 @@ jobs:
 	}
 	if got := unpinnedUses(content); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+func TestUnpinnedUsesAcrossLines(t *testing.T) {
+	// Found by FuzzUnpinnedUses: a value on the line after `uses:` is valid
+	// YAML, and a comment line in between must not hide it.
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{"value on the next line", "steps:\n  - uses:\n      actions/cache@v4\n", []string{"actions/cache@v4"}},
+		{"comment before the value", "steps:\n  - uses:\n      # cache\n      actions/cache@v4\n", []string{"actions/cache@v4"}},
+		{"commented-out step", "steps:\n  # - uses: actions/cache@v4\n", nil},
+		{"colon on the next line is not a key", "uses\n: actions/cache@v4\n", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := unpinnedUses(tt.content); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("unpinnedUses(%q) = %q, want %q", tt.content, got, tt.want)
+			}
+		})
 	}
 }
 
