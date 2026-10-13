@@ -66,10 +66,14 @@ func Evaluate(s *snapshot.Snapshot, b *baseline.Baseline, now time.Time) []Findi
 	for _, r := range s.Repos {
 		tierName, tier := b.TierFor(r.Name)
 		in := Input{Repo: r, Tier: tier, Now: now, StaleDays: b.StaleDays}
+		repoErr, unreadable := r.Errors[snapshot.FieldRepo]
 		for _, c := range catalog {
-			st, msg := c.Run(in)
-			if e, ok := r.Errors[snapshot.FieldRepo]; ok {
-				st, msg = Unknown, "couldn't read repository: "+e
+			var st Status
+			var msg string
+			if unreadable {
+				st, msg = Unknown, "couldn't read repository: "+repoErr
+			} else {
+				st, msg = c.Run(in)
 			}
 			f := Finding{Repo: r.Name, Tier: tierName, Check: c.ID, Status: st, Severity: c.Severity, Message: msg}
 			if st == Fail || st == Unknown {
@@ -81,13 +85,12 @@ func Evaluate(s *snapshot.Snapshot, b *baseline.Baseline, now time.Time) []Findi
 	return out
 }
 
-// rulesUnreadable is unknownIf for the rules field, except that a private repo
-// on a plan without rulesets is skipped: it can't be protected, so there is
-// nothing to fix and nothing unknown. GitHub signals this with a 403 telling
-// the owner to upgrade.
+// rulesUnreadable is unknownIf for the rules field, except that a repository
+// whose plan doesn't offer rulesets is skipped: it can't be protected, so
+// there is nothing to fix and nothing unknown. The collector decides which
+// repositories those are.
 func rulesUnreadable(r snapshot.Repo) (Status, string, bool) {
-	e := r.Errors[snapshot.FieldRules]
-	if r.Private && strings.Contains(e, "HTTP 403") && strings.Contains(e, "Upgrade to GitHub") {
+	if r.RulesetsUnavailable {
 		return Skip, "rulesets need a paid plan for private repos", true
 	}
 	return unknownIf(r, snapshot.FieldRules)

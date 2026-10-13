@@ -209,3 +209,51 @@ func TestCollectStopsOnRateLimit(t *testing.T) {
 		t.Errorf("Collect() error = %v, want a rate limit error, not a recorded field error", err)
 	}
 }
+
+func TestCollectClassifiesPlanLimitedRulesets(t *testing.T) {
+	const (
+		upgrade = "Upgrade to GitHub Pro or make this repository public to enable this feature."
+		noToken = "Resource not accessible by personal access token"
+	)
+	tests := []struct {
+		name        string
+		private     bool
+		message     string
+		unavailable bool
+		recorded    string // substring expected in Errors["rules"], or "" for none
+	}{
+		{"private repo on a free plan", true, upgrade, true, ""},
+		{"private repo, token lacks access", true, noToken, false, noToken},
+		{"public repo is never plan-limited", false, upgrade, false, "Upgrade"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/repos/me/app":
+					fmt.Fprintf(w, `{"name":"app","default_branch":"main","private":%t}`, tt.private)
+				case "/repos/me/app/rules/branches/main":
+					w.WriteHeader(http.StatusForbidden)
+					fmt.Fprintf(w, `{"message":%q}`, tt.message)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+					fmt.Fprint(w, `{"message":"Not Found"}`)
+				}
+			}))
+			defer srv.Close()
+
+			snap, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"app"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := snap.Repos[0]
+			if r.RulesetsUnavailable != tt.unavailable {
+				t.Errorf("RulesetsUnavailable = %t, want %t", r.RulesetsUnavailable, tt.unavailable)
+			}
+			got := r.Errors[snapshot.FieldRules]
+			if (tt.recorded == "") != (got == "") || !strings.Contains(got, tt.recorded) {
+				t.Errorf("Errors[rules] = %q, want it to contain %q", got, tt.recorded)
+			}
+		})
+	}
+}

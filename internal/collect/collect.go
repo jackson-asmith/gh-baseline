@@ -4,7 +4,9 @@ package collect
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -70,6 +72,17 @@ func (c *Collector) Collect(ctx context.Context, opt Options) (*snapshot.Snapsho
 		snap.Repos = append(snap.Repos, r)
 	}
 	return snap, nil
+}
+
+// planLimited reports whether err is GitHub refusing a feature because of the
+// account's plan. GitHub answers 403 both for this and for a token without
+// access, and the two responses differ only in their message, so the message
+// is the signal; see docs/adr/0002-plan-limited-rulesets.md. If GitHub rewords
+// it, the repository is reported as unknown, never as passing.
+func planLimited(err error) bool {
+	var se *ghapi.StatusError
+	return errors.As(err, &se) && se.Status == http.StatusForbidden &&
+		strings.HasPrefix(se.Message, "Upgrade to GitHub")
 }
 
 // fatal reports whether err should stop the whole run rather than be recorded
@@ -169,7 +182,11 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		if fatal(ctx, err) {
 			return snapshot.Repo{}, err
 		}
-		r.Errors[snapshot.FieldRules] = err.Error()
+		if r.Private && planLimited(err) {
+			r.RulesetsUnavailable = true
+		} else {
+			r.Errors[snapshot.FieldRules] = err.Error()
+		}
 	}
 	r.Rules = rules
 

@@ -46,6 +46,8 @@ func Load(path string) (*Baseline, error) {
 		return nil, err
 	}
 	b := Default()
+	// json.Unmarshal merges into an existing map, so the default "basic" tier
+	// would otherwise survive into every baseline. Tiers come only from the file.
 	b.Tiers = nil
 	if err := json.Unmarshal(raw, b); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)

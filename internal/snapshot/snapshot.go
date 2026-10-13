@@ -39,6 +39,11 @@ type Repo struct {
 	// ruleset that applies.
 	Rules []Rule `json:"rules"`
 
+	// RulesetsUnavailable is set when the repository's plan doesn't offer
+	// rulesets (a private repository on a free plan), so Rules is empty by
+	// necessity rather than by choice. See docs/adr/0002-plan-limited-rulesets.md.
+	RulesetsUnavailable bool `json:"rulesetsUnavailable,omitempty"`
+
 	Workflows  []File `json:"workflows"`
 	Dependabot *File  `json:"dependabot,omitempty"`
 

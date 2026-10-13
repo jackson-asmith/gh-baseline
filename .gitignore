@@ -1,0 +1,4 @@
+/gh-baseline
+/gh-baseline.exe
+/dist/
+*.snapshot.json

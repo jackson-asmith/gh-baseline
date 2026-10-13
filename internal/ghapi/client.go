@@ -8,14 +8,20 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
+
+// userAgent identifies the tool to GitHub, which asks every API client to
+// send one.
+const userAgent = "gh-baseline (+https://github.com/jackson-asmith/gh-baseline)"
 
 // Retry policy, matching keel.Http's Invoke-WithBoundedRetry.
 const (
@@ -151,7 +157,13 @@ func (c *Client) Get(ctx context.Context, path string, v any) (next string, err 
 		}
 		var se *StatusError
 		if !errors.As(err, &se) {
-			return "", err // network errors aren't retried
+			if attempt == maxAttempts || !transientNetErr(ctx, err) {
+				return "", err
+			}
+			if err := sleep(ctx, backoff(attempt)); err != nil {
+				return "", err
+			}
+			continue
 		}
 		delay, ok, err := retryDelay(se, header, attempt)
 		if !ok || attempt == maxAttempts {
@@ -173,6 +185,7 @@ func (c *Client) get(ctx context.Context, target string) ([]byte, http.Header, e
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("User-Agent", userAgent)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, nil, err
@@ -225,7 +238,29 @@ func retryDelay(se *StatusError, h http.Header, attempt int) (time.Duration, boo
 		}
 		return retryAfter + jitter, true, se
 	}
-	return min(baseDelay<<(attempt-1)+jitter, maxBackoff), true, se
+	return backoff(attempt), true, se
+}
+
+// backoff is the wait before retry number attempt when the server gave no
+// hint: exponential from baseDelay, with jitter, capped at maxBackoff.
+func backoff(attempt int) time.Duration {
+	return min(baseDelay<<(attempt-1)+rand.N(maxJitter), maxBackoff)
+}
+
+// transientNetErr reports whether a transport error is worth retrying: a
+// timeout, or a connection that was reset or closed mid-response. Every
+// request is a GET, so a retry can't repeat a change. Errors that won't fix
+// themselves, such as a bad certificate or an unknown host, aren't retried,
+// and neither is anything after the context ends.
+func transientNetErr(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return true
+	}
+	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 // parseRetryAfter reads a Retry-After header in either of its forms: a number

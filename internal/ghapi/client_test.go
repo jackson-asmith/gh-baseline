@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -225,5 +229,103 @@ func TestGetStopsWaitingWhenContextEnds(t *testing.T) {
 	}
 	if *calls != 1 {
 		t.Errorf("Get() made %d requests, want 1", *calls)
+	}
+}
+
+func TestGetRetriesTransientNetworkErrors(t *testing.T) {
+	// dropFirst closes the connection without a response on the first n
+	// requests, which the client sees as EOF, then answers normally.
+	dropFirst := func(n int32) (*httptest.Server, *atomic.Int32) {
+		var calls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if calls.Add(1) <= n {
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				conn.Close()
+				return
+			}
+			fmt.Fprint(w, `{}`)
+		}))
+		return srv, &calls
+	}
+
+	t.Run("dropped connection then success", func(t *testing.T) {
+		srv, calls := dropFirst(1)
+		defer srv.Close()
+		c, waits := recordingClient(srv)
+		if _, err := c.Get(context.Background(), "x", nil); err != nil {
+			t.Fatalf("Get() error = %v, want success after a retry", err)
+		}
+		if calls.Load() != 2 || len(*waits) != 1 {
+			t.Errorf("Get() made %d requests and waited %v, want 2 requests and 1 wait", calls.Load(), *waits)
+		}
+		if w := (*waits)[0]; w < baseDelay || w >= baseDelay+maxJitter {
+			t.Errorf("wait = %v, want in [%v, %v)", w, baseDelay, baseDelay+maxJitter)
+		}
+	})
+
+	t.Run("gives up after maxAttempts", func(t *testing.T) {
+		srv, calls := dropFirst(maxAttempts)
+		defer srv.Close()
+		c, _ := recordingClient(srv)
+		if _, err := c.Get(context.Background(), "x", nil); err == nil {
+			t.Fatal("Get() succeeded, want the network error")
+		}
+		if calls.Load() != maxAttempts {
+			t.Errorf("Get() made %d requests, want %d", calls.Load(), maxAttempts)
+		}
+	})
+}
+
+func TestTransientNetErr(t *testing.T) {
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests := []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want bool
+	}{
+		{"connection closed", context.Background(), fmt.Errorf("Get: %w", io.EOF), true},
+		{"cut off mid-body", context.Background(), io.ErrUnexpectedEOF, true},
+		{"reset", context.Background(), fmt.Errorf("read: %w", syscall.ECONNRESET), true},
+		{"timeout", context.Background(), &net.DNSError{IsTimeout: true}, true},
+		{"unknown host", context.Background(), &net.DNSError{IsNotFound: true}, false},
+		{"other", context.Background(), errors.New("x509: certificate signed by unknown authority"), false},
+		{"context ended", canceled, io.EOF, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := transientNetErr(tt.ctx, tt.err); got != tt.want {
+				t.Errorf("transientNetErr(%v) = %t, want %t", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetSendsHeaders(t *testing.T) {
+	var got http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		fmt.Fprint(w, `{}`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, Token: "t", HTTP: srv.Client()}
+	if _, err := c.Get(context.Background(), "x", nil); err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range map[string]string{
+		"Authorization":        "Bearer t",
+		"Accept":               "application/vnd.github+json",
+		"X-Github-Api-Version": "2022-11-28",
+		"User-Agent":           userAgent,
+	} {
+		if v := got.Get(k); v != want {
+			t.Errorf("header %s = %q, want %q", k, v, want)
+		}
 	}
 }
