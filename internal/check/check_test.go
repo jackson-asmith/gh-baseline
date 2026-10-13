@@ -70,7 +70,8 @@ func healthy() snapshot.Repo {
 	}
 }
 
-// planLimited is the error GitHub returns for rules on a free plan's private repo.
+// planLimited is the error GitHub returns for rules on a free plan's private
+// repo. Only the collector interprets it.
 const planLimited = "HTTP 403: Upgrade to GitHub Pro or make this repository public to enable this feature."
 
 var ciTier = baseline.Tier{RequirePullRequest: true, RequireStatusChecks: true}
@@ -96,25 +97,21 @@ func TestChecks(t *testing.T) {
 		{"ruleset.branch-safety", func(r *snapshot.Repo) { r.Rules = r.Rules[:1] }, ciTier, Fail, "force push"},
 		{"ruleset.branch-safety", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": "HTTP 403"} }, ciTier, Unknown, "HTTP 403"},
 		{"ruleset.branch-safety", func(r *snapshot.Repo) {
-			r.Private = true
-			r.Errors = map[string]string{"rules": planLimited}
+			r.RulesetsUnavailable = true
 		}, ciTier, Skip, "paid plan"},
-		{"ruleset.branch-safety", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": planLimited} }, ciTier, Unknown, "HTTP 403"}, // public: not a plan limit
+		{"ruleset.branch-safety", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": planLimited} }, ciTier, Unknown, "HTTP 403"}, // checks never interpret error text; the collector does
 		{"ruleset.branch-safety", func(r *snapshot.Repo) {
 			r.Private = true
 			r.Errors = map[string]string{"rules": "HTTP 403: Resource not accessible by personal access token"}
 		}, ciTier, Unknown, "personal access token"},
 		{"ruleset.pull-request", func(r *snapshot.Repo) {
-			r.Private = true
-			r.Errors = map[string]string{"rules": planLimited}
+			r.RulesetsUnavailable = true
 		}, ciTier, Skip, "paid plan"},
 		{"ruleset.status-checks", func(r *snapshot.Repo) {
-			r.Private = true
-			r.Errors = map[string]string{"rules": planLimited}
+			r.RulesetsUnavailable = true
 		}, ciTier, Skip, "paid plan"},
 		{"ruleset.check-source", func(r *snapshot.Repo) {
-			r.Private = true
-			r.Errors = map[string]string{"rules": planLimited}
+			r.RulesetsUnavailable = true
 		}, ciTier, Skip, "paid plan"},
 
 		{"ruleset.pull-request", func(r *snapshot.Repo) { r.Rules = r.Rules[:2] }, ciTier, Fail, "without a pull request"},

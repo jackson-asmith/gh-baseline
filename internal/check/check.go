@@ -81,13 +81,12 @@ func Evaluate(s *snapshot.Snapshot, b *baseline.Baseline, now time.Time) []Findi
 	return out
 }
 
-// rulesUnreadable is unknownIf for the rules field, except that a private repo
-// on a plan without rulesets is skipped: it can't be protected, so there is
-// nothing to fix and nothing unknown. GitHub signals this with a 403 telling
-// the owner to upgrade.
+// rulesUnreadable is unknownIf for the rules field, except that a repository
+// whose plan doesn't offer rulesets is skipped: it can't be protected, so
+// there is nothing to fix and nothing unknown. The collector decides which
+// repositories those are.
 func rulesUnreadable(r snapshot.Repo) (Status, string, bool) {
-	e := r.Errors[snapshot.FieldRules]
-	if r.Private && strings.Contains(e, "HTTP 403") && strings.Contains(e, "Upgrade to GitHub") {
+	if r.RulesetsUnavailable {
 		return Skip, "rulesets need a paid plan for private repos", true
 	}
 	return unknownIf(r, snapshot.FieldRules)
