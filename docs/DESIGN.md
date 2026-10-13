@@ -48,10 +48,12 @@ collect ──▶ snapshot (JSON) ──▶ evaluate ──▶ report
    A repository that can't be read at all is recorded the same way, and
    every check on it reports `unknown`.
 
-   Transient failures (408, 429, 5xx, and 403 secondary rate limits) are
-   retried up to three times with exponential backoff and jitter, honoring
-   `Retry-After` up to 60 seconds. This is the same policy as keel.Http's
-   `Invoke-WithBoundedRetry`. An exhausted hourly rate limit that won't reset
+   Transient failures (408, 429, 5xx, 403 secondary rate limits, and
+   connections that time out, reset, or close mid-response) are retried up
+   to three times with exponential backoff and jitter, honoring
+   `Retry-After` up to 60 seconds. This is the same policy as
+   `Invoke-WithBoundedRetry` in
+   [keel](https://github.com/jackson-asmith/keel)'s `keel.Http` module. An exhausted hourly rate limit that won't reset
    within 60 seconds stops the run (exit 2) and reports when it resets, rather
    than marking every remaining repository `unknown`.
 2. **Snapshot.** Everything collected goes into one JSON document. Checks
