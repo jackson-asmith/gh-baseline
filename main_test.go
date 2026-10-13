@@ -67,10 +67,17 @@ func TestReplayJSONAll(t *testing.T) {
 func TestSaveSnapshotRoundTrips(t *testing.T) {
 	saved := filepath.Join(t.TempDir(), "copy.json")
 	var out, errOut bytes.Buffer
-	run([]string{"--snapshot", fixture, "--save-snapshot", saved}, &out, &errOut)
+	if code := run([]string{"--snapshot", fixture, "--save-snapshot", saved}, &out, &errOut); code == exitError {
+		t.Fatalf("first run failed: %s", errOut.String())
+	}
+	if out.Len() == 0 {
+		t.Fatal("first run produced no output")
+	}
 
 	var again bytes.Buffer
-	run([]string{"--snapshot", saved}, &again, &errOut)
+	if code := run([]string{"--snapshot", saved}, &again, &errOut); code == exitError {
+		t.Fatalf("re-evaluating the saved snapshot failed: %s", errOut.String())
+	}
 	if again.String() != out.String() {
 		t.Errorf("re-evaluating a saved snapshot changed the result:\n%s\nvs\n%s", out.String(), again.String())
 	}
