@@ -77,7 +77,8 @@ func TestCollectListsAndFilters(t *testing.T) {
 	if r.VulnReporting == nil || !*r.VulnReporting {
 		t.Errorf("vulnReporting = %v", r.VulnReporting)
 	}
-	if !r.HasRule("deletion") || len(r.RequiredChecks()) != 1 || *r.RequiredChecks()[0].IntegrationID != 15368 {
+	checks, err := r.RequiredChecks()
+	if err != nil || !r.HasRule("deletion") || len(checks) != 1 || *checks[0].IntegrationID != 15368 {
 		t.Errorf("rules = %+v", r.Rules)
 	}
 	if len(r.Workflows) != 1 || r.Workflows[0].Content != "permissions: {}\n" {

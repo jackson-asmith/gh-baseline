@@ -63,10 +63,16 @@ func (b *Baseline) validate() error {
 	if _, ok := b.Tiers[b.DefaultTier]; !ok {
 		return fmt.Errorf("defaultTier %q is not a defined tier", b.DefaultTier)
 	}
+	seen := map[string]string{}
 	for repo, tier := range b.Repos {
 		if _, ok := b.Tiers[tier]; !ok {
 			return fmt.Errorf("repo %q uses undefined tier %q", repo, tier)
 		}
+		key := strings.ToLower(repo)
+		if other, ok := seen[key]; ok {
+			return fmt.Errorf("repos %q and %q are the same repository (names are case-insensitive)", other, repo)
+		}
+		seen[key] = repo
 	}
 	if b.StaleDays <= 0 {
 		return errors.New("staleDays must be positive")

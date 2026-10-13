@@ -196,7 +196,7 @@ func (c *Collector) file(ctx context.Context, base, path string) (*snapshot.File
 		Content  string `json:"content"`
 		Encoding string `json:"encoding"`
 	}
-	if _, err := c.API.Get(ctx, base+"/contents/"+path, &f); err != nil {
+	if _, err := c.API.Get(ctx, base+"/contents/"+escapePath(path), &f); err != nil {
 		return nil, err
 	}
 	if f.Encoding != "base64" {
@@ -207,4 +207,13 @@ func (c *Collector) file(ctx context.Context, base, path string) (*snapshot.File
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &snapshot.File{Path: path, Content: string(b)}, nil
+}
+
+// escapePath escapes each segment of a slash-separated repository path.
+func escapePath(p string) string {
+	segs := strings.Split(p, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
 }

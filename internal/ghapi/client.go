@@ -80,12 +80,16 @@ func APIBase(host string) string {
 	return "https://" + host + "/api/v3"
 }
 
-// Get fetches path (relative to BaseURL, or an absolute URL) into v.
-// It returns the response's next-page URL, if any.
+// Get fetches path (relative to BaseURL, or an absolute URL under it) into v.
+// It returns the response's next-page URL, if any. Absolute URLs elsewhere are
+// refused so the token is never sent to another host.
 func (c *Client) Get(ctx context.Context, path string, v any) (next string, err error) {
-	target := path
-	if !strings.HasPrefix(path, "https://") {
-		target = c.BaseURL + "/" + strings.TrimPrefix(path, "/")
+	target := c.BaseURL + "/" + strings.TrimPrefix(path, "/")
+	if strings.Contains(path, "://") {
+		if !strings.HasPrefix(path, c.BaseURL+"/") {
+			return "", fmt.Errorf("refusing to send credentials to %s: not under %s", path, c.BaseURL)
+		}
+		target = path
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {

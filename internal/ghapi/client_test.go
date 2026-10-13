@@ -43,3 +43,22 @@ func TestGetErrors(t *testing.T) {
 		t.Errorf("Get(404) error = %q, want %q", err.Error(), "HTTP 404: Not Found")
 	}
 }
+
+func TestGetRefusesOtherHosts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ok" {
+			t.Errorf("unexpected request to %s", r.URL)
+		}
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, Token: "t", HTTP: srv.Client()}
+	for _, u := range []string{"https://evil.example.com/x", srv.URL + ".evil.example.com/x"} {
+		if _, err := c.Get(context.Background(), u, nil); err == nil {
+			t.Errorf("Get(%q) = nil error, want refusal", u)
+		}
+	}
+	if _, err := c.Get(context.Background(), srv.URL+"/ok", nil); err != nil {
+		t.Errorf("Get(%q) = %v, want success for a URL under BaseURL", srv.URL+"/ok", err)
+	}
+}

@@ -117,7 +117,11 @@ func TestChecks(t *testing.T) {
 		{"workflow.dependabot-actions", func(r *snapshot.Repo) { r.Dependabot = nil }, ciTier, Fail, "no dependabot.yml"},
 		{"workflow.dependabot-actions", func(r *snapshot.Repo) { r.Dependabot.Content = "- package-ecosystem: pip\n" }, ciTier, Fail, "github-actions"},
 
+		{"ruleset.check-source", func(r *snapshot.Repo) { r.Rules[3].Parameters = []byte(`{"required_status_checks":"oops"}`) }, ciTier, Unknown, "required_status_checks"},
+		{"ruleset.status-checks", func(r *snapshot.Repo) { r.Rules[3].Parameters = []byte(`not json`) }, ciTier, Unknown, "required_status_checks"},
+
 		{"workflow.stale-secrets", func(r *snapshot.Repo) { r.PushedAt = now.AddDate(-3, 0, 0) }, ciTier, Fail, "TOKEN"},
+		{"workflow.stale-secrets", func(r *snapshot.Repo) { r.PushedAt = time.Time{} }, ciTier, Unknown, "no push date"},
 		{"workflow.stale-secrets", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Workflows[0].Content = "permissions: {}\n"

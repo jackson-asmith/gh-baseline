@@ -137,7 +137,11 @@ var catalog = []Check{
 			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldRules); ok {
 				return st, msg
 			}
-			n := len(in.Repo.RequiredChecks())
+			checks, err := in.Repo.RequiredChecks()
+			if err != nil {
+				return Unknown, err.Error()
+			}
+			n := len(checks)
 			if n == 0 {
 				return Fail, "no status checks are required"
 			}
@@ -152,7 +156,10 @@ var catalog = []Check{
 			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldRules); ok {
 				return st, msg
 			}
-			checks := in.Repo.RequiredChecks()
+			checks, err := in.Repo.RequiredChecks()
+			if err != nil {
+				return Unknown, err.Error()
+			}
 			if len(checks) == 0 {
 				return Skip, "no required checks"
 			}
@@ -268,6 +275,9 @@ var catalog = []Check{
 			}
 			if len(in.Repo.Workflows) == 0 {
 				return Skip, "no workflows"
+			}
+			if in.Repo.PushedAt.IsZero() {
+				return Unknown, "no push date recorded"
 			}
 			days := int(in.Now.Sub(in.Repo.PushedAt).Hours() / 24)
 			if days < in.StaleDays {
