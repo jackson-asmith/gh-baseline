@@ -1,6 +1,6 @@
 # 0002. Classify plan-limited rulesets in the collector, by message
 
-- **Status:** Accepted
+- **Status:** Accepted; amended 2026-10-13 (see Amendment)
 - **Date:** 2026-10-13
 
 ## Context
@@ -18,6 +18,9 @@ The two responses differ only in their message:
 |---|---|---|
 | Free plan, private repo | 403 | `Upgrade to GitHub Pro or make this repository public to enable this feature.` |
 | Token lacks access | 403 | `Resource not accessible by personal access token` |
+
+The second row, and the paragraph before the table, were assumptions
+rather than observations; the amendment below records what GitHub returns.
 
 The first version matched this text inside the checks, against the error
 string stored in the snapshot. That put GitHub's wording in the evaluation
@@ -52,3 +55,28 @@ interpret error text.
 - Snapshots saved before this change store the raw error, so re-evaluating
   them reports these repositories as `unknown` until they're collected
   again.
+
+## Amendment, 2026-10-13: the token case is a 404
+
+The second row of the table above was never observed; it was an assumption
+written into a test. Checked against the live API:
+
+| Situation | Observed | Message |
+|---|---|---|
+| Free plan, private repo | 403 | `Upgrade to GitHub Pro or make this repository public to enable this feature.` |
+| Fine-grained token without access to the private repo | 404 | `Not Found` |
+
+GitHub hides a private repository from a token that can't see it rather
+than refusing it, and reading branch rules needs only metadata access,
+which any token that can see the repository has. So the ambiguity this
+record was written to resolve doesn't occur for the token case. Rejecting
+"status and visibility alone" for the reason given above was wrong: with
+the tokens tested, a 403 on a private repo's rules did mean a free plan.
+
+The decision stands, for a smaller reason. GitHub uses 403 for other
+refusals, such as organization SAML enforcement, and those must stay
+`unknown`. Checking the message costs one string comparison and only ever
+errs toward `unknown`. The tests now use the observed responses and say
+where each came from; the SAML case is GitHub's general message and hasn't
+been observed on this endpoint.
+
