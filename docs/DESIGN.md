@@ -1,5 +1,8 @@
 # gh-baseline design
 
+Individual decisions and their alternatives are recorded in
+[`docs/adr/`](adr/README.md).
+
 ## Problem
 
 A personal or small-team GitHub account accumulates repositories over years.
