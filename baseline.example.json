@@ -10,6 +10,7 @@
     "keel": "ci",
     "LinuxConfig": "ci",
     "adaptive-comm-tool": "ci",
+    "gh-baseline": "ci",
     "jacksonsmith.github.io": "reviewed"
   },
   "exclude": [],
