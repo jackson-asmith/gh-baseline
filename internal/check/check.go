@@ -81,6 +81,18 @@ func Evaluate(s *snapshot.Snapshot, b *baseline.Baseline, now time.Time) []Findi
 	return out
 }
 
+// rulesUnreadable is unknownIf for the rules field, except that a private repo
+// on a plan without rulesets is skipped: it can't be protected, so there is
+// nothing to fix and nothing unknown. GitHub signals this with a 403 telling
+// the owner to upgrade.
+func rulesUnreadable(r snapshot.Repo) (Status, string, bool) {
+	e := r.Errors[snapshot.FieldRules]
+	if r.Private && strings.Contains(e, "HTTP 403") && strings.Contains(e, "Upgrade to GitHub") {
+		return Skip, "rulesets need a paid plan for private repos", true
+	}
+	return unknownIf(r, snapshot.FieldRules)
+}
+
 // unknownIf returns Unknown with the recorded error when field couldn't be read.
 func unknownIf(r snapshot.Repo, field string) (Status, string, bool) {
 	if e, ok := r.Errors[field]; ok {
@@ -96,7 +108,7 @@ var catalog = []Check{
 		Severity:    High,
 		Remediation: "Add a ruleset on the default branch with \"Restrict deletions\" and \"Block force pushes\".",
 		Run: func(in Input) (Status, string) {
-			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldRules); ok {
+			if st, msg, ok := rulesUnreadable(in.Repo); ok {
 				return st, msg
 			}
 			var missing []string
@@ -120,7 +132,7 @@ var catalog = []Check{
 			if !in.Tier.RequirePullRequest {
 				return Skip, "tier doesn't require pull requests"
 			}
-			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldRules); ok {
+			if st, msg, ok := rulesUnreadable(in.Repo); ok {
 				return st, msg
 			}
 			if !in.Repo.HasRule("pull_request") {
@@ -137,7 +149,7 @@ var catalog = []Check{
 			if !in.Tier.RequireStatusChecks {
 				return Skip, "tier doesn't require status checks"
 			}
-			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldRules); ok {
+			if st, msg, ok := rulesUnreadable(in.Repo); ok {
 				return st, msg
 			}
 			checks, err := in.Repo.RequiredChecks()
@@ -156,7 +168,7 @@ var catalog = []Check{
 		Severity:    High,
 		Remediation: "Edit each required check in the ruleset and set its source to the app that runs it (usually GitHub Actions).",
 		Run: func(in Input) (Status, string) {
-			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldRules); ok {
+			if st, msg, ok := rulesUnreadable(in.Repo); ok {
 				return st, msg
 			}
 			checks, err := in.Repo.RequiredChecks()

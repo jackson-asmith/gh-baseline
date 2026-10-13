@@ -120,7 +120,9 @@ matter which ruleset (or how many) provides them.
 - **Read-only.** It never changes a repository; every failure comes with a fix.
 - **Honest about blind spots.** If the API won't show something, the result is
   `unknown`, never `pass`. Malware alerts and default workflow-token
-  permissions aren't visible to it at all.
+  permissions aren't visible to it at all. The one exception: private repos
+  on a free plan can't have rulesets, so the ruleset checks skip them instead
+  of reporting `unknown`.
 - **No dependencies.** Standard library only. A tool for auditing supply-chain
   settings shouldn't bring its own supply chain.
 - **Checks are pure functions** of a saved snapshot, so they're tested against
