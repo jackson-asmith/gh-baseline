@@ -1,0 +1,18 @@
+{
+  "owner": "jackson-asmith",
+  "defaultTier": "basic",
+  "tiers": {
+    "basic": { "requirePullRequest": false, "requireStatusChecks": false },
+    "reviewed": { "requirePullRequest": true, "requireStatusChecks": false },
+    "ci": { "requirePullRequest": true, "requireStatusChecks": true }
+  },
+  "repos": {
+    "keel": "ci",
+    "LinuxConfig": "ci",
+    "adaptive-comm-tool": "ci",
+    "jacksonsmith.github.io": "reviewed"
+  },
+  "exclude": [],
+  "includeForks": true,
+  "staleDays": 365
+}

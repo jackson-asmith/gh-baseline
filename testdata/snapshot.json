@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-10-13T12:00:00Z",
+  "host": "github.com",
+  "owner": "example",
+  "repos": [
+    {
+      "name": "service",
+      "defaultBranch": "main",
+      "pushedAt": "2026-10-10T00:00:00Z",
+      "security": {
+        "secret_scanning": "enabled",
+        "secret_scanning_push_protection": "enabled"
+      },
+      "vulnReporting": true,
+      "rules": [
+        { "type": "deletion" },
+        { "type": "non_fast_forward" },
+        { "type": "pull_request", "parameters": {} },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "required_status_checks": [
+              { "context": "test", "integration_id": 15368 },
+              { "context": "lint", "integration_id": null }
+            ]
+          }
+        }
+      ],
+      "workflows": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "content": "permissions:\n  contents: read\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v5\n"
+        }
+      ],
+      "dependabot": {
+        "path": ".github/dependabot.yml",
+        "content": "updates:\n  - package-ecosystem: github-actions\n"
+      }
+    },
+    {
+      "name": "notes",
+      "defaultBranch": "main",
+      "pushedAt": "2026-09-01T00:00:00Z",
+      "security": {
+        "secret_scanning": "enabled",
+        "secret_scanning_push_protection": "enabled"
+      },
+      "vulnReporting": true,
+      "rules": [{ "type": "deletion" }, { "type": "non_fast_forward" }],
+      "workflows": []
+    }
+  ]
+}
