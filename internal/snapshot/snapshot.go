@@ -66,6 +66,7 @@ type File struct {
 
 // Field names used as keys in Repo.Errors.
 const (
+	FieldRepo          = "repo" // the repository itself; every check is unknown
 	FieldSecurity      = "security"
 	FieldVulnReporting = "vulnReporting"
 	FieldRules         = "rules"

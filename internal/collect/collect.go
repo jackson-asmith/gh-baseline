@@ -60,7 +60,12 @@ func (c *Collector) Collect(ctx context.Context, opt Options) (*snapshot.Snapsho
 		}
 		r, err := c.repo(ctx, opt.Owner, name)
 		if err != nil {
-			return nil, fmt.Errorf("%s/%s: %w", opt.Owner, name, err)
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("%s/%s: %w", opt.Owner, name, err)
+			}
+			// Record the failure and keep going; one unreadable repo
+			// shouldn't hide the results for the rest.
+			r = snapshot.Repo{Name: name, Errors: map[string]string{snapshot.FieldRepo: err.Error()}}
 		}
 		snap.Repos = append(snap.Repos, r)
 	}

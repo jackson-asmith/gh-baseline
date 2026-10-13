@@ -142,6 +142,16 @@ func TestChecks(t *testing.T) {
 	}
 }
 
+func TestEvaluateUnreadableRepoIsUnknown(t *testing.T) {
+	r := snapshot.Repo{Name: "ghost", Errors: map[string]string{snapshot.FieldRepo: "HTTP 502"}}
+	b := &baseline.Baseline{DefaultTier: "basic", Tiers: map[string]baseline.Tier{"basic": {}}, StaleDays: 365}
+	for _, f := range Evaluate(&snapshot.Snapshot{Repos: []snapshot.Repo{r}}, b, now) {
+		if f.Status != Unknown || !strings.Contains(f.Message, "HTTP 502") {
+			t.Errorf("%s: got %s (%s), want unknown mentioning HTTP 502", f.Check, f.Status, f.Message)
+		}
+	}
+}
+
 func TestEvaluateUsesTierAndAddsRemediation(t *testing.T) {
 	bare := healthy()
 	bare.Name = "Scratch"

@@ -118,13 +118,33 @@ func TestCollectRecordsUnreadableFields(t *testing.T) {
 	}
 }
 
-func TestCollectFailsWhenRepoMissing(t *testing.T) {
+func TestCollectRecordsMissingRepoAndContinues(t *testing.T) {
 	srv := fakeAPI(t)
 	defer srv.Close()
 
-	_, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"ghost"}})
-	if err == nil || !strings.Contains(err.Error(), "me/ghost") {
-		t.Errorf("want an error naming the repo, got %v", err)
+	snap, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"ghost", "app"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Repos) != 2 {
+		t.Fatalf("want ghost and app, got %+v", snap.Repos)
+	}
+	if ghost := snap.Repos[0]; ghost.Name != "ghost" || !strings.Contains(ghost.Errors[snapshot.FieldRepo], "404") {
+		t.Errorf("ghost = %+v, want a recorded 404", ghost)
+	}
+	if app := snap.Repos[1]; app.Errors != nil {
+		t.Errorf("app errors = %v, want none", app.Errors)
+	}
+}
+
+func TestCollectStopsWhenContextEnds(t *testing.T) {
+	srv := fakeAPI(t)
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := newCollector(srv).Collect(ctx, Options{Owner: "me", Repos: []string{"app"}}); err == nil {
+		t.Error("Collect(cancelled ctx) = nil error, want failure")
 	}
 }
 
