@@ -211,20 +211,28 @@ func TestCollectStopsOnRateLimit(t *testing.T) {
 }
 
 func TestCollectClassifiesPlanLimitedRulesets(t *testing.T) {
+	// Responses and where they came from (see docs/adr/0002):
+	//   upgrade: observed 2026-10-13, branch rules on a private repo on a free plan.
+	//   404:     observed 2026-10-13, a fine-grained token without access to the
+	//            private repo. GitHub hides the repo; it does not answer 403.
+	//   saml:    GitHub's general message for organization SAML enforcement; not
+	//            observed on this endpoint, kept as an example of another 403.
 	const (
 		upgrade = "Upgrade to GitHub Pro or make this repository public to enable this feature."
-		noToken = "Resource not accessible by personal access token"
+		saml    = "Resource protected by organization SAML enforcement. You must grant your Personal Access token access to this organization."
 	)
 	tests := []struct {
 		name        string
 		private     bool
+		status      int
 		message     string
 		unavailable bool
 		recorded    string // substring expected in Errors["rules"], or "" for none
 	}{
-		{"private repo on a free plan", true, upgrade, true, ""},
-		{"private repo, token lacks access", true, noToken, false, noToken},
-		{"public repo is never plan-limited", false, upgrade, false, "Upgrade"},
+		{"private repo on a free plan", true, http.StatusForbidden, upgrade, true, ""},
+		{"private repo, token without access", true, http.StatusNotFound, "Not Found", false, "404"},
+		{"private repo, another 403", true, http.StatusForbidden, saml, false, "SAML"},
+		{"public repo is never plan-limited", false, http.StatusForbidden, upgrade, false, "Upgrade"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -233,7 +241,7 @@ func TestCollectClassifiesPlanLimitedRulesets(t *testing.T) {
 				case "/repos/me/app":
 					fmt.Fprintf(w, `{"name":"app","default_branch":"main","private":%t}`, tt.private)
 				case "/repos/me/app/rules/branches/main":
-					w.WriteHeader(http.StatusForbidden)
+					w.WriteHeader(tt.status)
 					fmt.Fprintf(w, `{"message":%q}`, tt.message)
 				default:
 					w.WriteHeader(http.StatusNotFound)
