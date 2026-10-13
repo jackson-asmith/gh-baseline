@@ -60,7 +60,7 @@ func (c *Collector) Collect(ctx context.Context, opt Options) (*snapshot.Snapsho
 		}
 		r, err := c.repo(ctx, opt.Owner, name)
 		if err != nil {
-			if ctx.Err() != nil {
+			if fatal(ctx, err) {
 				return nil, fmt.Errorf("%s/%s: %w", opt.Owner, name, err)
 			}
 			// Record the failure and keep going; one unreadable repo
@@ -70,6 +70,12 @@ func (c *Collector) Collect(ctx context.Context, opt Options) (*snapshot.Snapsho
 		snap.Repos = append(snap.Repos, r)
 	}
 	return snap, nil
+}
+
+// fatal reports whether err should stop the whole run rather than be recorded
+// against one repository: every later request would fail the same way.
+func fatal(ctx context.Context, err error) bool {
+	return ctx.Err() != nil || ghapi.IsRateLimited(err)
 }
 
 func (c *Collector) listRepos(ctx context.Context, opt Options) ([]string, error) {
@@ -150,6 +156,9 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		Enabled bool `json:"enabled"`
 	}
 	if _, err := c.API.Get(ctx, base+"/private-vulnerability-reporting", &pvr); err != nil {
+		if fatal(ctx, err) {
+			return snapshot.Repo{}, err
+		}
 		r.Errors[snapshot.FieldVulnReporting] = err.Error()
 	} else {
 		r.VulnReporting = &pvr.Enabled
@@ -157,12 +166,18 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 
 	rules, err := c.rules(ctx, base+"/rules/branches/"+url.PathEscape(ar.DefaultBranch))
 	if err != nil {
+		if fatal(ctx, err) {
+			return snapshot.Repo{}, err
+		}
 		r.Errors[snapshot.FieldRules] = err.Error()
 	}
 	r.Rules = rules
 
 	wf, err := c.workflows(ctx, base)
 	if err != nil {
+		if fatal(ctx, err) {
+			return snapshot.Repo{}, err
+		}
 		r.Errors[snapshot.FieldWorkflows] = err.Error()
 	}
 	r.Workflows = wf
@@ -172,6 +187,9 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		if err == nil {
 			r.Dependabot = f
 			break
+		}
+		if fatal(ctx, err) {
+			return snapshot.Repo{}, err
 		}
 		if !ghapi.IsNotFound(err) {
 			r.Errors[snapshot.FieldDependabot] = err.Error()

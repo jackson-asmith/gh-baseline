@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackson-asmith/gh-baseline/internal/ghapi"
 	"github.com/jackson-asmith/gh-baseline/internal/snapshot"
@@ -182,5 +184,28 @@ func TestListReposEndpointByAccount(t *testing.T) {
 				t.Errorf("Collect(owner %q) listed %q, want %q", tt.owner, listed, tt.want)
 			}
 		})
+	}
+}
+
+func TestCollectStopsOnRateLimit(t *testing.T) {
+	reset := strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/me/app":
+			fmt.Fprint(w, `{"name":"app","default_branch":"main"}`)
+		case "/repos/me/app/private-vulnerability-reporting":
+			fmt.Fprint(w, `{"enabled":true}`)
+		default: // the budget runs out partway through the repo
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.Header().Set("X-RateLimit-Reset", reset)
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, `{"message":"API rate limit exceeded"}`)
+		}
+	}))
+	defer srv.Close()
+
+	_, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"app"}})
+	if !ghapi.IsRateLimited(err) {
+		t.Errorf("Collect() error = %v, want a rate limit error, not a recorded field error", err)
 	}
 }

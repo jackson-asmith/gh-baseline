@@ -62,7 +62,8 @@ gh baseline --baseline baseline.json --format json
 Exit codes: `0` nothing failed, `1` at least one check failed, `2` the run
 itself failed. `unknown` results don't fail the run, but they're listed. A
 repository that can't be read at all is reported as `unknown` for every check
-rather than stopping the run.
+rather than stopping the run. Transient API errors are retried; an exhausted
+rate limit stops the run with exit `2` and says when it resets.
 
 When `--owner` is the account `gh` is logged in as, or an organization you
 belong to, private repositories are included. For any other user, GitHub only
