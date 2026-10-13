@@ -305,3 +305,27 @@ func TestTransientNetErr(t *testing.T) {
 		})
 	}
 }
+
+func TestGetSendsHeaders(t *testing.T) {
+	var got http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		fmt.Fprint(w, `{}`)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, Token: "t", HTTP: srv.Client()}
+	if _, err := c.Get(context.Background(), "x", nil); err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range map[string]string{
+		"Authorization":        "Bearer t",
+		"Accept":               "application/vnd.github+json",
+		"X-Github-Api-Version": "2022-11-28",
+		"User-Agent":           userAgent,
+	} {
+		if v := got.Get(k); v != want {
+			t.Errorf("header %s = %q, want %q", k, v, want)
+		}
+	}
+}

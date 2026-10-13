@@ -102,7 +102,8 @@ func TestUsageErrors(t *testing.T) {
 
 func TestNoOwner(t *testing.T) {
 	var out, errOut bytes.Buffer
-	if code := run(nil, &out, &errOut); code != exitError || !strings.Contains(errOut.String(), "no owner") {
-		t.Errorf("exit %d, stderr %q", code, errOut.String())
+	code := run(nil, &out, &errOut)
+	if code != exitError || !strings.HasPrefix(errOut.String(), "gh-baseline: no owner") {
+		t.Errorf("run() = %d, stderr %q; want %d and a \"gh-baseline: no owner\" message", code, errOut.String(), exitError)
 	}
 }

@@ -19,6 +19,10 @@ import (
 	"time"
 )
 
+// userAgent identifies the tool to GitHub, which asks every API client to
+// send one.
+const userAgent = "gh-baseline (+https://github.com/jackson-asmith/gh-baseline)"
+
 // Retry policy, matching keel.Http's Invoke-WithBoundedRetry.
 const (
 	maxAttempts   = 3                      // including the first
@@ -181,6 +185,7 @@ func (c *Client) get(ctx context.Context, target string) ([]byte, http.Header, e
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("User-Agent", userAgent)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, nil, err

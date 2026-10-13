@@ -40,40 +40,42 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("gh-baseline", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fail := func(format string, a ...any) int {
+		fmt.Fprintf(stderr, "gh-baseline: "+format+"\n", a...)
+		return exitError
+	}
+	flags := flag.NewFlagSet("gh-baseline", flag.ContinueOnError)
+	flags.SetOutput(stderr)
 	var (
-		baselinePath = fs.String("baseline", "", "baseline file (JSON); default: every repo in the basic tier")
-		owner        = fs.String("owner", "", "account to audit (overrides the baseline's owner)")
-		hostname     = fs.String("hostname", "", "GitHub host (default: GH_HOST or github.com)")
-		snapIn       = fs.String("snapshot", "", "evaluate a saved snapshot instead of calling the API")
-		snapOut      = fs.String("save-snapshot", "", "write the collected snapshot to this file")
-		format       = fs.String("format", "table", "output format: table or json")
-		all          = fs.Bool("all", false, "show passing and skipped checks too (table format)")
+		baselinePath = flags.String("baseline", "", "baseline file (JSON); default: every repo in the basic tier")
+		owner        = flags.String("owner", "", "account to audit (overrides the baseline's owner)")
+		hostname     = flags.String("hostname", "", "GitHub host (default: GH_HOST or github.com)")
+		snapIn       = flags.String("snapshot", "", "evaluate a saved snapshot instead of calling the API")
+		snapOut      = flags.String("save-snapshot", "", "write the collected snapshot to this file")
+		format       = flags.String("format", "table", "output format: table or json")
+		all          = flags.Bool("all", false, "show passing and skipped checks too (table format)")
 		repos        listFlag
 	)
-	fs.Var(&repos, "repo", "repository to audit (repeatable); default: all of the owner's repos")
-	fs.Usage = func() {
+	flags.Var(&repos, "repo", "repository to audit (repeatable); default: all of the owner's repos")
+	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: gh baseline [flags]\n\nReports where repositories drift from a declared security baseline.\n\nFlags:")
-		fs.PrintDefaults()
+		flags.PrintDefaults()
 	}
-	if err := fs.Parse(args); err != nil {
+	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitOK
 		}
 		return exitError
 	}
 	if *format != "table" && *format != "json" {
-		fmt.Fprintf(stderr, "unknown format %q\n", *format)
-		return exitError
+		return fail("unknown format %q", *format)
 	}
 
 	b := baseline.Default()
 	if *baselinePath != "" {
 		var err error
 		if b, err = baseline.Load(*baselinePath); err != nil {
-			fmt.Fprintln(stderr, err)
-			return exitError
+			return fail("%v", err)
 		}
 	}
 	if *owner != "" {
@@ -84,18 +86,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if *snapIn != "" {
 		var err error
 		if snap, err = snapshot.Load(*snapIn); err != nil {
-			fmt.Fprintln(stderr, err)
-			return exitError
+			return fail("%v", err)
 		}
 	} else {
 		if b.Owner == "" {
-			fmt.Fprintln(stderr, "no owner: pass --owner or set \"owner\" in the baseline")
-			return exitError
+			return fail(`no owner: pass --owner or set "owner" in the baseline`)
 		}
 		api, err := ghapi.New(*hostname)
 		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return exitError
+			return fail("%v", err)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
@@ -107,14 +106,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 			Exclude:      b.Exclude,
 		})
 		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return exitError
+			return fail("%v", err)
 		}
 	}
 	if *snapOut != "" {
 		if err := snap.Save(*snapOut); err != nil {
-			fmt.Fprintln(stderr, err)
-			return exitError
+			return fail("%v", err)
 		}
 	}
 
@@ -126,8 +123,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = report.Table(stdout, findings, *all)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return exitError
+		return fail("%v", err)
 	}
 	if report.Summarize(findings).Fail > 0 {
 		return exitFindings

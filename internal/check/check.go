@@ -66,10 +66,14 @@ func Evaluate(s *snapshot.Snapshot, b *baseline.Baseline, now time.Time) []Findi
 	for _, r := range s.Repos {
 		tierName, tier := b.TierFor(r.Name)
 		in := Input{Repo: r, Tier: tier, Now: now, StaleDays: b.StaleDays}
+		repoErr, unreadable := r.Errors[snapshot.FieldRepo]
 		for _, c := range catalog {
-			st, msg := c.Run(in)
-			if e, ok := r.Errors[snapshot.FieldRepo]; ok {
-				st, msg = Unknown, "couldn't read repository: "+e
+			var st Status
+			var msg string
+			if unreadable {
+				st, msg = Unknown, "couldn't read repository: "+repoErr
+			} else {
+				st, msg = c.Run(in)
 			}
 			f := Finding{Repo: r.Name, Tier: tierName, Check: c.ID, Status: st, Severity: c.Severity, Message: msg}
 			if st == Fail || st == Unknown {
