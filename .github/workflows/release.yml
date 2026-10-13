@@ -17,6 +17,32 @@ jobs:
       contents: write # create the release and upload binaries
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: cli/gh-extension-precompile@76961aa3bd1123d0a6fd42d0a41aca0696937c39 # v2.2.0
         with:
           go_version_file: go.mod
+
+  # Installs the release the way a user does and runs it on each OS, so a
+  # release with missing or broken binaries fails here instead of for users.
+  smoke-test:
+    name: Smoke test (${{ matrix.os }})
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the released extension
+        run: gh extension install "$GITHUB_REPOSITORY" --pin "$GITHUB_REF_NAME"
+      - name: Smoke test
+        run: bash .github/smoke-test.sh gh baseline
