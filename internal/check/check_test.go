@@ -14,7 +14,7 @@ var now = time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 
 func byID(t *testing.T, id string) Check {
 	t.Helper()
-	for _, c := range Catalog {
+	for _, c := range catalog {
 		if c.ID == id {
 			return c
 		}
@@ -26,7 +26,10 @@ func byID(t *testing.T, id string) Check {
 func rule(typ string, params any) snapshot.Rule {
 	r := snapshot.Rule{Type: typ}
 	if params != nil {
-		b, _ := json.Marshal(params)
+		b, err := json.Marshal(params)
+		if err != nil {
+			panic(err) // test fixtures are static; this can't happen
+		}
 		r.Parameters = b
 	}
 	return r
@@ -71,7 +74,7 @@ var ciTier = baseline.Tier{RequirePullRequest: true, RequireStatusChecks: true}
 
 func TestHealthyRepoPassesEverything(t *testing.T) {
 	in := Input{Repo: healthy(), Tier: ciTier, Now: now, StaleDays: 365}
-	for _, c := range Catalog {
+	for _, c := range catalog {
 		if st, msg := c.Run(in); st != Pass {
 			t.Errorf("%s: got %s (%s), want pass", c.ID, st, msg)
 		}
@@ -148,8 +151,8 @@ func TestEvaluateUsesTierAndAddsRemediation(t *testing.T) {
 	}
 	fs := Evaluate(&snapshot.Snapshot{Repos: []snapshot.Repo{healthy(), bare}}, b, now)
 
-	if len(fs) != 2*len(Catalog) {
-		t.Fatalf("got %d findings, want %d", len(fs), 2*len(Catalog))
+	if len(fs) != 2*len(catalog) {
+		t.Fatalf("got %d findings, want %d", len(fs), 2*len(catalog))
 	}
 	for _, f := range fs {
 		if f.Status == Fail || f.Status == Unknown {

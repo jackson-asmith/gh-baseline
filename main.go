@@ -99,7 +99,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		c := &collect.Collector{API: api, Host: api.Host}
+		c := &collect.Collector{API: api}
 		snap, err = c.Collect(ctx, collect.Options{
 			Owner:        b.Owner,
 			Repos:        repos,

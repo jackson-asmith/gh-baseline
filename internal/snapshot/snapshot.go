@@ -4,6 +4,7 @@ package snapshot
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
 )
@@ -107,7 +108,7 @@ func Load(path string) (*Snapshot, error) {
 	}
 	var s Snapshot
 	if err := json.Unmarshal(b, &s); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &s, nil
 }

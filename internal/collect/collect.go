@@ -23,8 +23,7 @@ type Options struct {
 
 // Collector gathers snapshots.
 type Collector struct {
-	API  *ghapi.Client
-	Host string
+	API *ghapi.Client
 }
 
 type apiRepo struct {
@@ -54,7 +53,7 @@ func (c *Collector) Collect(ctx context.Context, opt Options) (*snapshot.Snapsho
 		skip[strings.ToLower(e)] = true
 	}
 
-	snap := &snapshot.Snapshot{GeneratedAt: time.Now().UTC(), Host: c.Host, Owner: opt.Owner}
+	snap := &snapshot.Snapshot{GeneratedAt: time.Now().UTC(), Host: c.API.Host, Owner: opt.Owner}
 	for _, name := range names {
 		if skip[strings.ToLower(name)] {
 			continue

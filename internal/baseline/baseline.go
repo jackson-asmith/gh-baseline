@@ -4,6 +4,7 @@ package baseline
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -57,7 +58,7 @@ func Load(path string) (*Baseline, error) {
 
 func (b *Baseline) validate() error {
 	if len(b.Tiers) == 0 {
-		return fmt.Errorf("no tiers defined")
+		return errors.New("no tiers defined")
 	}
 	if _, ok := b.Tiers[b.DefaultTier]; !ok {
 		return fmt.Errorf("defaultTier %q is not a defined tier", b.DefaultTier)
@@ -68,7 +69,7 @@ func (b *Baseline) validate() error {
 		}
 	}
 	if b.StaleDays <= 0 {
-		return fmt.Errorf("staleDays must be positive")
+		return errors.New("staleDays must be positive")
 	}
 	return nil
 }

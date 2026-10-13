@@ -4,7 +4,7 @@ package check
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +15,7 @@ import (
 // Status is the outcome of one check on one repository.
 type Status string
 
+// Check outcomes.
 const (
 	Pass    Status = "pass"
 	Fail    Status = "fail"
@@ -25,6 +26,7 @@ const (
 // Severity ranks failures.
 type Severity string
 
+// Severities, from most to least urgent.
 const (
 	High   Severity = "high"
 	Medium Severity = "medium"
@@ -64,7 +66,7 @@ func Evaluate(s *snapshot.Snapshot, b *baseline.Baseline, now time.Time) []Findi
 	for _, r := range s.Repos {
 		tierName, tier := b.TierFor(r.Name)
 		in := Input{Repo: r, Tier: tier, Now: now, StaleDays: b.StaleDays}
-		for _, c := range Catalog {
+		for _, c := range catalog {
 			st, msg := c.Run(in)
 			f := Finding{Repo: r.Name, Tier: tierName, Check: c.ID, Status: st, Severity: c.Severity, Message: msg}
 			if st == Fail || st == Unknown {
@@ -84,8 +86,8 @@ func unknownIf(r snapshot.Repo, field string) (Status, string, bool) {
 	return "", "", false
 }
 
-// Catalog is every check, in report order.
-var Catalog = []Check{
+// catalog is every check, in report order.
+var catalog = []Check{
 	{
 		ID:          "ruleset.branch-safety",
 		Severity:    High,
@@ -221,18 +223,13 @@ var Catalog = []Check{
 			if len(in.Repo.Workflows) == 0 {
 				return Skip, "no workflows"
 			}
-			seen := map[string]bool{}
 			var refs []string
 			for _, w := range in.Repo.Workflows {
-				for _, u := range unpinnedUses(w.Content) {
-					if !seen[u] {
-						seen[u] = true
-						refs = append(refs, u)
-					}
-				}
+				refs = append(refs, unpinnedUses(w.Content)...)
 			}
 			if len(refs) > 0 {
-				sort.Strings(refs)
+				slices.Sort(refs)
+				refs = slices.Compact(refs)
 				return Fail, "not pinned to a SHA: " + strings.Join(refs, ", ")
 			}
 			return Pass, "all actions pinned"
@@ -276,20 +273,15 @@ var Catalog = []Check{
 			if days < in.StaleDays {
 				return Pass, fmt.Sprintf("last push %d days ago", days)
 			}
-			seen := map[string]bool{}
 			var names []string
 			for _, w := range in.Repo.Workflows {
-				for _, s := range secretsUsed(w.Content) {
-					if !seen[s] {
-						seen[s] = true
-						names = append(names, s)
-					}
-				}
+				names = append(names, secretsUsed(w.Content)...)
 			}
 			if len(names) == 0 {
 				return Pass, fmt.Sprintf("stale (%d days) but workflows use no secrets", days)
 			}
-			sort.Strings(names)
+			slices.Sort(names)
+			names = slices.Compact(names)
 			return Fail, fmt.Sprintf("no push in %d days; workflows use %s", days, strings.Join(names, ", "))
 		},
 	},

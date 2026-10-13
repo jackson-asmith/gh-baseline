@@ -83,11 +83,11 @@ func APIBase(host string) string {
 // Get fetches path (relative to BaseURL, or an absolute URL) into v.
 // It returns the response's next-page URL, if any.
 func (c *Client) Get(ctx context.Context, path string, v any) (next string, err error) {
-	url := path
+	target := path
 	if !strings.HasPrefix(path, "https://") {
-		url = c.BaseURL + "/" + strings.TrimPrefix(path, "/")
+		target = c.BaseURL + "/" + strings.TrimPrefix(path, "/")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return "", err
 	}
