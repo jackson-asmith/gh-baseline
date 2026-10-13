@@ -68,8 +68,11 @@ func (c *Collector) Collect(ctx context.Context, opt Options) (*snapshot.Snapsho
 }
 
 func (c *Collector) listRepos(ctx context.Context, opt Options) ([]string, error) {
+	next, err := c.reposPath(ctx, opt.Owner)
+	if err != nil {
+		return nil, err
+	}
 	var names []string
-	next := fmt.Sprintf("users/%s/repos?type=owner&per_page=100", url.PathEscape(opt.Owner))
 	for next != "" {
 		var page []apiRepo
 		n, err := c.API.Get(ctx, next, &page)
@@ -85,6 +88,32 @@ func (c *Collector) listRepos(ctx context.Context, opt Options) ([]string, error
 		next = n
 	}
 	return names, nil
+}
+
+// reposPath picks the listing endpoint for owner. /users/{owner}/repos returns
+// only public repositories, even for the token's own account, so the
+// authenticated user and organizations need their own endpoints.
+func (c *Collector) reposPath(ctx context.Context, owner string) (string, error) {
+	var me struct {
+		Login string `json:"login"`
+	}
+	if _, err := c.API.Get(ctx, "user", &me); err != nil {
+		return "", fmt.Errorf("identify the token's user: %w", err)
+	}
+	if strings.EqualFold(me.Login, owner) {
+		return "user/repos?affiliation=owner&per_page=100", nil
+	}
+	var account struct {
+		Type string `json:"type"`
+	}
+	if _, err := c.API.Get(ctx, "users/"+url.PathEscape(owner), &account); err != nil {
+		return "", err
+	}
+	if account.Type == "Organization" {
+		return fmt.Sprintf("orgs/%s/repos?type=all&per_page=100", url.PathEscape(owner)), nil
+	}
+	// Another user's private repositories aren't listable by anyone else.
+	return fmt.Sprintf("users/%s/repos?type=owner&per_page=100", url.PathEscape(owner)), nil
 }
 
 func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo, error) {
