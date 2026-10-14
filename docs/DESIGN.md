@@ -148,9 +148,38 @@ viewpoint: it enforces one owner's declared baseline across all their
 repositories, and checks settings only the owner can see, such as ruleset
 check sources and secret scanning. Running both is reasonable.
 
+[OpenSSF Allstar](https://github.com/ossf/allstar) is the closest in purpose:
+an organization declares policies (in a `.allstar` repository, one YAML file
+per policy) and Allstar enforces them continuously, logging violations,
+opening issues, or fixing some settings itself. Its policies cover branch
+protection, dangerous workflows, Actions rules, outside collaborators,
+CODEOWNERS, SECURITY.md, binary artifacts, and repository administrators, and
+it can run selected Scorecard checks. The hosted app has been retired, so an
+operator now runs their own instance as a scheduled Action or a service.
+
+`gh-baseline` makes different trade-offs:
+
+| | Allstar | gh-baseline |
+|---|---|---|
+| Runs | Continuously, as an app you host | On demand, as a `gh` extension |
+| Scope | Organizations | Any owner, including personal accounts |
+| On violation | Log, issue, or fix | Report with a fix; never changes anything |
+| Policy | Per-policy YAML | Tiers assigned per repository |
+| Evidence | Live state | Live state, or a saved snapshot replayed offline |
+
+They overlap on branch protection and workflow hygiene. Checks only
+`gh-baseline` has today: required-check sources, whether the secrets a stale
+workflow uses still exist, plan-limited rulesets, and `unknown` rather than a
+guess when the API won't say. An organization already running Allstar can
+use `gh-baseline` for a point-in-time audit, or for personal accounts Allstar
+doesn't cover.
+
 ## Roadmap
 
 1. SARIF output, so findings can be uploaded to code scanning.
-2. A scheduled workflow that opens or updates an issue on drift.
-3. `--fix` for settings the API can change, dry-run by default.
+2. A scheduled workflow that opens or updates an issue on drift. This is what
+   Allstar's issue mode does for organizations; it's worth building only to
+   serve personal accounts without hosting an app.
+3. `--fix` for settings the API can change, dry-run by default. Allstar's fix
+   mode already does this for branch protection in organizations.
 4. Tier selection by topic or by "has CI", not just by name.

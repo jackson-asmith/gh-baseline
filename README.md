@@ -129,8 +129,22 @@ matter which ruleset (or how many) provides them.
 - **Checks are pure functions** of a saved snapshot, so they're tested against
   fixtures and never need the network.
 
-More in [docs/DESIGN.md](docs/DESIGN.md), including how this relates to
-[OpenSSF Scorecard](https://github.com/ossf/scorecard).
+More in [docs/DESIGN.md](docs/DESIGN.md).
+
+## Related tools
+
+- [OpenSSF Scorecard](https://github.com/ossf/scorecard) scores a single
+  project's health from the outside. gh-baseline instead checks every repo an
+  owner has against a baseline they declare, including settings only the owner
+  can see, such as required-check sources and which secrets still exist.
+- [OpenSSF Allstar](https://github.com/ossf/allstar) continuously enforces
+  policies across an organization, opening issues or fixing settings. It now
+  runs as an app you host yourself. gh-baseline is an on-demand, read-only
+  report that needs nothing installed and also covers personal accounts.
+
+They overlap on branch protection and workflow hygiene. Running Scorecard or
+Allstar alongside gh-baseline is reasonable; see
+[docs/DESIGN.md](docs/DESIGN.md#prior-art) for details.
 
 ## Token
 
