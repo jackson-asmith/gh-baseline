@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -38,6 +39,9 @@ func fakeAPI(t *testing.T) *httptest.Server {
 		"/repos/me/app/contents/.github/workflows":        `[{"path":".github/workflows/ci.yml","type":"file"},{"path":".github/workflows/README.md","type":"file"}]`,
 		"/repos/me/app/contents/.github/workflows/ci.yml": `{"encoding":"base64","content":"` + b64("permissions: {}\n") + `"}`,
 		"/repos/me/app/contents/.github/dependabot.yaml":  `{"encoding":"base64","content":"` + b64("version: 2\n") + `"}`,
+		"/repos/me/app/actions/secrets":                   `{"total_count":1,"secrets":[{"name":"DEPLOY_KEY"}]}`,
+		"/repos/me/app/environments":                      `{"total_count":1,"environments":[{"name":"prod"}]}`,
+		"/repos/me/app/environments/prod/secrets":         `{"total_count":1,"secrets":[{"name":"API_KEY"}]}`,
 		"/repos/me/forked":                                repo("forked", `,"fork":true`),
 		"/repos/me/forked/rules/branches/main":            `[]`,
 	}
@@ -93,8 +97,70 @@ func TestCollectListsAndFilters(t *testing.T) {
 	if r.Dependabot == nil || r.Dependabot.Path != ".github/dependabot.yaml" {
 		t.Errorf("dependabot = %+v (should fall back to .yaml)", r.Dependabot)
 	}
+	if want := []string{"API_KEY", "DEPLOY_KEY"}; !slices.Equal(r.Secrets, want) {
+		t.Errorf("secrets = %q, want %q (repository and environment)", r.Secrets, want)
+	}
 	if r.Errors != nil {
 		t.Errorf("unexpected errors: %v", r.Errors)
+	}
+}
+
+func TestCollectSecrets(t *testing.T) {
+	tests := []struct {
+		name      string
+		ownerType string
+		orgStatus int // response from the organization-secrets endpoint
+		want      []string
+		wantErr   string // substring of Errors["secrets"], or "" for none
+		wantOrg   bool   // whether the organization endpoint should be asked
+	}{
+		{"user repository never asks for organization secrets", "User", http.StatusUnprocessableEntity, []string{"REPO_SECRET"}, "", false},
+		{"organization secrets shared with the repository", "Organization", http.StatusOK, []string{"ORG_SECRET", "REPO_SECRET"}, "", true},
+		{"unreadable secrets are recorded", "Organization", http.StatusForbidden, nil, "organization secrets: HTTP 403", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			askedOrg := false
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/repos/acme/app":
+					fmt.Fprintf(w, `{"name":"app","default_branch":"main","owner":{"type":%q}}`, tt.ownerType)
+				case "/repos/acme/app/contents/.github/workflows":
+					fmt.Fprint(w, `[{"path":".github/workflows/ci.yml","type":"file"}]`)
+				case "/repos/acme/app/contents/.github/workflows/ci.yml":
+					fmt.Fprint(w, `{"encoding":"base64","content":"`+b64("on: push\n")+`"}`)
+				case "/repos/acme/app/actions/secrets":
+					fmt.Fprint(w, `{"secrets":[{"name":"REPO_SECRET"}]}`)
+				case "/repos/acme/app/environments":
+					fmt.Fprint(w, `{"environments":[]}`)
+				case "/repos/acme/app/actions/organization-secrets":
+					askedOrg = true
+					w.WriteHeader(tt.orgStatus)
+					fmt.Fprint(w, `{"message":"canned","secrets":[{"name":"ORG_SECRET"}]}`)
+				case "/repos/acme/app/rules/branches/main":
+					fmt.Fprint(w, `[]`)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+					fmt.Fprint(w, `{"message":"Not Found"}`)
+				}
+			}))
+			defer srv.Close()
+
+			snap, err := newCollector(srv).Collect(context.Background(), Options{Owner: "acme", Repos: []string{"app"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := snap.Repos[0]
+			if !slices.Equal(r.Secrets, tt.want) {
+				t.Errorf("secrets = %q, want %q", r.Secrets, tt.want)
+			}
+			if got := r.Errors[snapshot.FieldSecrets]; !strings.Contains(got, tt.wantErr) || (tt.wantErr == "" && got != "") {
+				t.Errorf("secrets error = %q, want %q", got, tt.wantErr)
+			}
+			if askedOrg != tt.wantOrg {
+				t.Errorf("asked for organization secrets = %v, want %v", askedOrg, tt.wantOrg)
+			}
+		})
 	}
 }
 
@@ -117,6 +183,9 @@ func TestCollectRecordsUnreadableFields(t *testing.T) {
 	}
 	if len(r.Workflows) != 0 || r.Errors[snapshot.FieldWorkflows] != "" {
 		t.Errorf("a missing workflows dir means no workflows, not an error: %+v %v", r.Workflows, r.Errors)
+	}
+	if r.Secrets != nil || r.Errors[snapshot.FieldSecrets] != "" {
+		t.Errorf("a repository without workflows shouldn't be asked for secrets: %q %v", r.Secrets, r.Errors)
 	}
 }
 

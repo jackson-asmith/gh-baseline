@@ -47,6 +47,12 @@ type Repo struct {
 	Workflows  []File `json:"workflows"`
 	Dependabot *File  `json:"dependabot,omitempty"`
 
+	// Secrets names the Actions secrets this repository's workflows can read:
+	// repository and environment secrets, plus organization secrets shared
+	// with it. Empty means none exist; nil means they weren't collected, as
+	// for a repository without workflows or a snapshot from before v0.2.0.
+	Secrets []string `json:"secrets"`
+
 	Errors map[string]string `json:"errors,omitempty"`
 }
 
@@ -77,6 +83,7 @@ const (
 	FieldRules         = "rules"
 	FieldWorkflows     = "workflows"
 	FieldDependabot    = "dependabot"
+	FieldSecrets       = "secrets"
 )
 
 // HasRule reports whether an effective rule of type t exists.

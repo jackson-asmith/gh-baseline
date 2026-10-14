@@ -12,7 +12,7 @@ legacy-gem  security.push-protection     fail    high      push protection is of
 legacy-gem  workflow.token-permissions   fail    medium    no top-level permissions: .github/workflows/gempush.yml
 legacy-gem  workflow.pinned-actions      fail    medium    not pinned to a SHA: actions/checkout@v2, actions/setup-ruby@v1
 legacy-gem  workflow.dependabot-actions  fail    low       no dependabot.yml
-legacy-gem  workflow.stale-secrets       fail    high      no push in 2400 days; workflows use GPR_AUTH_TOKEN, RUBYGEMS_AUTH_TOKEN
+legacy-gem  workflow.stale-secrets       fail    high      no push in 2400 days; secrets GPR_AUTH_TOKEN, RUBYGEMS_AUTH_TOKEN still exist and workflows use them
 
 How to fix:
   ruleset.branch-safety: Add a ruleset on the default branch with "Restrict deletions" and "Block force pushes".
@@ -111,7 +111,7 @@ belongs in `basic`, since requiring a pull request would break it.
 | `workflow.token-permissions` | A workflow has no top-level `permissions:` |
 | `workflow.pinned-actions` | An action is referenced by tag or branch instead of a commit SHA |
 | `workflow.dependabot-actions` | Workflows exist but Dependabot doesn't keep them updated |
-| `workflow.stale-secrets` | No push in `staleDays` and workflows still reference secrets |
+| `workflow.stale-secrets` | No push in `staleDays` and workflows use secrets that still exist |
 
 Rules are read from the effective rules on the default branch, so it doesn't
 matter which ruleset (or how many) provides them.
@@ -136,7 +136,9 @@ More in [docs/DESIGN.md](docs/DESIGN.md), including how this relates to
 
 It uses your `gh` login, or `GH_TOKEN` / `GITHUB_TOKEN`. A fine-grained token
 needs read-only Metadata, Contents, and Administration on the repositories
-you audit. Nothing needs write access.
+you audit, plus Secrets, Actions, and Environments so `workflow.stale-secrets`
+can see which secrets exist. Only names are read, never values. Nothing needs
+write access.
 
 ## Development
 

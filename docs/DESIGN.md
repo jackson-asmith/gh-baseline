@@ -45,7 +45,9 @@ collect ──▶ snapshot (JSON) ──▶ evaluate ──▶ report
 1. **Collect.** For each repository: repo metadata and
    `security_and_analysis`, the effective rules on the default branch
    (`/rules/branches/{branch}`, which merges every ruleset that applies),
-   private vulnerability reporting, the workflow files, and `dependabot.yml`.
+   private vulnerability reporting, the workflow files, `dependabot.yml`, and,
+   for repositories with workflows, the names of the secrets those workflows
+   can read (repository, environment, and shared organization secrets).
    An endpoint that refuses access records an error for that field instead of
    failing the run.
    A repository that can't be read at all is recorded the same way, and
@@ -109,7 +111,7 @@ pushes.
 | `workflow.token-permissions` | medium | A workflow has no top-level `permissions:` |
 | `workflow.pinned-actions` | medium | An action is referenced by tag or branch instead of a commit SHA |
 | `workflow.dependabot-actions` | low | Workflows exist but Dependabot doesn't update them |
-| `workflow.stale-secrets` | high | No push in `staleDays` and workflows reference secrets |
+| `workflow.stale-secrets` | high | No push in `staleDays` and workflows use secrets that still exist |
 
 `ruleset.check-source` is the least obvious: a required check named
 `ShellCheck` with no source can be satisfied by anything allowed to post a
@@ -123,7 +125,6 @@ them to this kind of token:
 - Dependabot malware alerts setting
 - Default `GITHUB_TOKEN` permissions and environment protection rules, when
   the token lacks Actions/Administration read
-- Which Actions secrets exist (the tool infers secret use from workflow text)
 
 Workflow parsing is line-based for now (top-level `permissions:` and `uses:`
 lines). It handles conventional formatting; a YAML parser is the obvious
@@ -133,8 +134,10 @@ upgrade if that proves too loose.
 
 The token comes from `GH_TOKEN`, `GITHUB_TOKEN`, or `gh auth token`. A
 fine-grained token needs read-only access to Metadata, Contents, and
-Administration (for rulesets and vulnerability reporting). Nothing needs
-write access.
+Administration (for rulesets and vulnerability reporting), plus Secrets,
+Actions, and Environments to see which secrets exist for
+`workflow.stale-secrets`. Without those three, that check reports `unknown`
+for stale repositories instead of guessing. Nothing needs write access.
 
 ## Prior art
 

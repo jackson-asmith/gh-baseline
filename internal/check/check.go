@@ -287,6 +287,9 @@ var catalog = []Check{
 		ID:          "workflow.stale-secrets",
 		Severity:    High,
 		Remediation: "If the repo is retired, archive it, delete its Actions secrets, and revoke the credentials behind them.",
+		// A stale workflow is only dangerous if the secrets it names still
+		// exist, so references in workflow text are checked against the
+		// secrets collected for the repository.
 		Run: func(in Input) (Status, string) {
 			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldWorkflows); ok {
 				return st, msg
@@ -310,7 +313,24 @@ var catalog = []Check{
 			}
 			slices.Sort(names)
 			names = slices.Compact(names)
-			return Fail, fmt.Sprintf("no push in %d days; workflows use %s", days, strings.Join(names, ", "))
+			used := strings.Join(names, ", ")
+			if e, ok := in.Repo.Errors[snapshot.FieldSecrets]; ok {
+				return Unknown, fmt.Sprintf("no push in %d days; workflows use %s; couldn't read which secrets exist: %s", days, used, e)
+			}
+			if in.Repo.Secrets == nil {
+				return Unknown, fmt.Sprintf("no push in %d days; workflows use %s; the snapshot doesn't record which secrets exist", days, used)
+			}
+			var live []string
+			for _, n := range names {
+				// Secret names are case-insensitive; GitHub stores them in upper case.
+				if slices.ContainsFunc(in.Repo.Secrets, func(s string) bool { return strings.EqualFold(s, n) }) {
+					live = append(live, n)
+				}
+			}
+			if len(live) == 0 {
+				return Pass, fmt.Sprintf("stale (%d days); workflows use %s, but no such secrets exist", days, used)
+			}
+			return Fail, fmt.Sprintf("no push in %d days; secrets %s still exist and workflows use them", days, strings.Join(live, ", "))
 		},
 	},
 }

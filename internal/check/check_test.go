@@ -67,6 +67,7 @@ func healthy() snapshot.Repo {
 			Content: "permissions:\n  contents: read\njobs:\n  a:\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n      - run: echo ${{ secrets.TOKEN }}\n",
 		}},
 		Dependabot: &snapshot.File{Path: ".github/dependabot.yml", Content: "updates:\n  - package-ecosystem: github-actions\n"},
+		Secrets:    []string{"TOKEN"},
 	}
 }
 
@@ -148,6 +149,28 @@ func TestChecks(t *testing.T) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Workflows[0].Content = "permissions: {}\n"
 		}, ciTier, Pass, "no secrets"},
+		{"workflow.stale-secrets", "referenced secrets don't exist", func(r *snapshot.Repo) {
+			r.PushedAt = now.AddDate(-3, 0, 0)
+			r.Secrets = []string{}
+		}, ciTier, Pass, "no such secrets exist"},
+		{"workflow.stale-secrets", "only referenced secrets count", func(r *snapshot.Repo) {
+			r.PushedAt = now.AddDate(-3, 0, 0)
+			r.Secrets = []string{"UNRELATED"}
+		}, ciTier, Pass, "no such secrets exist"},
+		{"workflow.stale-secrets", "secret names are case-insensitive", func(r *snapshot.Repo) {
+			r.PushedAt = now.AddDate(-3, 0, 0)
+			r.Secrets = []string{"token"}
+		}, ciTier, Fail, "TOKEN still exist"},
+		{"workflow.stale-secrets", "secrets not collected", func(r *snapshot.Repo) {
+			r.PushedAt = now.AddDate(-3, 0, 0)
+			r.Secrets = nil
+		}, ciTier, Unknown, "doesn't record which secrets exist"},
+		{"workflow.stale-secrets", "secrets unreadable", func(r *snapshot.Repo) {
+			r.PushedAt = now.AddDate(-3, 0, 0)
+			r.Secrets = nil
+			r.Errors = map[string]string{snapshot.FieldSecrets: "HTTP 403: Resource not accessible"}
+		}, ciTier, Unknown, "HTTP 403"},
+		{"workflow.stale-secrets", "recent push needs no secret lookup", func(r *snapshot.Repo) { r.Secrets = nil }, ciTier, Pass, "last push"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.check+"/"+tt.name, func(t *testing.T) {
