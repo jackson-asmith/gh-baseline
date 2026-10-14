@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -35,7 +36,10 @@ type apiRepo struct {
 	Fork          bool      `json:"fork"`
 	Archived      bool      `json:"archived"`
 	PushedAt      time.Time `json:"pushed_at"`
-	Security      map[string]struct {
+	Owner         struct {
+		Type string `json:"type"` // "User" or "Organization"
+	} `json:"owner"`
+	Security map[string]struct {
 		Status string `json:"status"`
 	} `json:"security_and_analysis"`
 }
@@ -214,10 +218,99 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		}
 	}
 
+	// Secrets only matter to workflows, so repositories without any skip
+	// the extra requests.
+	if len(r.Workflows) > 0 {
+		secrets, err := c.secrets(ctx, base, ar.Owner.Type == "Organization")
+		if err != nil {
+			if fatal(ctx, err) {
+				return snapshot.Repo{}, err
+			}
+			r.Errors[snapshot.FieldSecrets] = err.Error()
+		}
+		r.Secrets = secrets
+	}
+
 	if len(r.Errors) == 0 {
 		r.Errors = nil
 	}
 	return r, nil
+}
+
+// secrets returns the sorted names of every Actions secret the repository's
+// workflows can read: repository secrets, each environment's secrets, and,
+// for an organization's repository, the organization secrets shared with it.
+// The organization endpoint answers 422 for a user's repository, so it is
+// only asked about organization repositories.
+func (c *Collector) secrets(ctx context.Context, base string, org bool) ([]string, error) {
+	names, err := c.secretNames(ctx, base+"/actions/secrets")
+	if err != nil {
+		return nil, err
+	}
+	envs, err := c.environments(ctx, base)
+	if err != nil {
+		return nil, err
+	}
+	for _, env := range envs {
+		s, err := c.secretNames(ctx, base+"/environments/"+url.PathEscape(env)+"/secrets")
+		if err != nil {
+			return nil, fmt.Errorf("environment %s: %w", env, err)
+		}
+		names = append(names, s...)
+	}
+	if org {
+		s, err := c.secretNames(ctx, base+"/actions/organization-secrets")
+		if err != nil {
+			return nil, fmt.Errorf("organization secrets: %w", err)
+		}
+		names = append(names, s...)
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
+}
+
+// secretNames lists the names from a paginated secrets endpoint. It never
+// returns nil without an error, so "none" stays distinct from "not collected".
+func (c *Collector) secretNames(ctx context.Context, path string) ([]string, error) {
+	names := []string{}
+	next := path + "?per_page=100"
+	for next != "" {
+		var page struct {
+			Secrets []struct {
+				Name string `json:"name"`
+			} `json:"secrets"`
+		}
+		n, err := c.API.Get(ctx, next, &page)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range page.Secrets {
+			names = append(names, s.Name)
+		}
+		next = n
+	}
+	return names, nil
+}
+
+func (c *Collector) environments(ctx context.Context, base string) ([]string, error) {
+	var names []string
+	next := base + "/environments?per_page=100"
+	for next != "" {
+		var page struct {
+			Environments []struct {
+				Name string `json:"name"`
+			} `json:"environments"`
+		}
+		n, err := c.API.Get(ctx, next, &page)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range page.Environments {
+			names = append(names, e.Name)
+		}
+		next = n
+	}
+	return names, nil
 }
 
 func (c *Collector) rules(ctx context.Context, path string) ([]snapshot.Rule, error) {
