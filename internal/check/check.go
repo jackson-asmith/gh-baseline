@@ -163,7 +163,7 @@ var catalog = []Check{
 			if n == 0 {
 				return Fail, "no status checks are required"
 			}
-			return Pass, fmt.Sprintf("%d status checks required", n)
+			return Pass, count(n, "status check", "status checks") + " required"
 		},
 	},
 	{
@@ -190,7 +190,7 @@ var catalog = []Check{
 			if len(anySource) > 0 {
 				return Fail, "accepts any source: " + strings.Join(anySource, ", ")
 			}
-			return Pass, fmt.Sprintf("all %d required checks are pinned to a source", len(checks))
+			return Pass, pinnedMessage(len(checks))
 		},
 	},
 	securityToggle("security.secret-scanning", "secret_scanning", "secret scanning",
@@ -302,23 +302,23 @@ var catalog = []Check{
 			}
 			days := int(in.Now.Sub(in.Repo.PushedAt).Hours() / 24)
 			if days < in.StaleDays {
-				return Pass, fmt.Sprintf("last push %d days ago", days)
+				return Pass, "last push " + count(days, "day", "days") + " ago"
 			}
 			var names []string
 			for _, w := range in.Repo.Workflows {
 				names = append(names, secretsUsed(w.Content)...)
 			}
 			if len(names) == 0 {
-				return Pass, fmt.Sprintf("stale (%d days) but workflows use no secrets", days)
+				return Pass, fmt.Sprintf("stale (%s) but workflows use no secrets", count(days, "day", "days"))
 			}
 			slices.Sort(names)
 			names = slices.Compact(names)
 			used := strings.Join(names, ", ")
 			if e, ok := in.Repo.Errors[snapshot.FieldSecrets]; ok {
-				return Unknown, fmt.Sprintf("no push in %d days; workflows use %s; couldn't read which secrets exist: %s", days, used, e)
+				return Unknown, fmt.Sprintf("no push in %s; workflows use %s; couldn't read which secrets exist: %s", count(days, "day", "days"), used, e)
 			}
 			if in.Repo.Secrets == nil {
-				return Unknown, fmt.Sprintf("no push in %d days; workflows use %s; the snapshot doesn't record which secrets exist", days, used)
+				return Unknown, fmt.Sprintf("no push in %s; workflows use %s; the snapshot doesn't record which secrets exist", count(days, "day", "days"), used)
 			}
 			var live []string
 			for _, n := range names {
@@ -328,11 +328,26 @@ var catalog = []Check{
 				}
 			}
 			if len(live) == 0 {
-				return Pass, fmt.Sprintf("stale (%d days); workflows use %s, but no such secrets exist", days, used)
+				return Pass, fmt.Sprintf("stale (%s); workflows use %s, but no such secrets exist", count(days, "day", "days"), used)
 			}
-			return Fail, fmt.Sprintf("no push in %d days; secrets %s still exist and workflows use them", days, strings.Join(live, ", "))
+			return Fail, fmt.Sprintf("no push in %s; secrets %s still exist and workflows use them", count(days, "day", "days"), strings.Join(live, ", "))
 		},
 	},
+}
+
+// count formats n with the matching noun: "1 day", "3 days".
+func count(n int, singular, plural string) string {
+	if n == 1 {
+		return "1 " + singular
+	}
+	return fmt.Sprintf("%d %s", n, plural)
+}
+
+func pinnedMessage(n int) string {
+	if n == 1 {
+		return "the required check is pinned to a source"
+	}
+	return fmt.Sprintf("all %d required checks are pinned to a source", n)
 }
 
 func securityToggle(id, key, label, remediation string) Check {
