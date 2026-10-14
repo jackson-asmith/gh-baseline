@@ -1,0 +1,70 @@
+{
+  "source": "Manual audit of these five repositories on 2026-10-13, judged from raw API responses and workflow files, not from gh-baseline output. The one private repository is renamed retired-gem.",
+  "repos": {
+    "retired-gem": {
+      "ruleset.branch-safety": "skip",
+      "ruleset.pull-request": "skip",
+      "ruleset.status-checks": "skip",
+      "ruleset.check-source": "skip",
+      "security.secret-scanning": "skip",
+      "security.push-protection": "skip",
+      "security.vuln-reporting": "skip",
+      "workflow.token-permissions": "fail",
+      "workflow.pinned-actions": "fail",
+      "workflow.dependabot-actions": "fail",
+      "workflow.stale-secrets": "pass"
+    },
+    "PublicPowerShell": {
+      "ruleset.branch-safety": "fail",
+      "ruleset.pull-request": "skip",
+      "ruleset.status-checks": "skip",
+      "ruleset.check-source": "skip",
+      "security.secret-scanning": "fail",
+      "security.push-protection": "fail",
+      "security.vuln-reporting": "pass",
+      "workflow.token-permissions": "skip",
+      "workflow.pinned-actions": "skip",
+      "workflow.dependabot-actions": "skip",
+      "workflow.stale-secrets": "skip"
+    },
+    "TimeCapsuleSMB": {
+      "ruleset.branch-safety": "pass",
+      "ruleset.pull-request": "skip",
+      "ruleset.status-checks": "skip",
+      "ruleset.check-source": "skip",
+      "security.secret-scanning": "pass",
+      "security.push-protection": "pass",
+      "security.vuln-reporting": "pass",
+      "workflow.token-permissions": "fail",
+      "workflow.pinned-actions": "fail",
+      "workflow.dependabot-actions": "pass",
+      "workflow.stale-secrets": "pass"
+    },
+    "keel": {
+      "ruleset.branch-safety": "pass",
+      "ruleset.pull-request": "pass",
+      "ruleset.status-checks": "pass",
+      "ruleset.check-source": "pass",
+      "security.secret-scanning": "pass",
+      "security.push-protection": "pass",
+      "security.vuln-reporting": "pass",
+      "workflow.token-permissions": "pass",
+      "workflow.pinned-actions": "pass",
+      "workflow.dependabot-actions": "pass",
+      "workflow.stale-secrets": "pass"
+    },
+    "jacksonsmith.github.io": {
+      "ruleset.branch-safety": "pass",
+      "ruleset.pull-request": "pass",
+      "ruleset.status-checks": "skip",
+      "ruleset.check-source": "skip",
+      "security.secret-scanning": "pass",
+      "security.push-protection": "pass",
+      "security.vuln-reporting": "pass",
+      "workflow.token-permissions": "pass",
+      "workflow.pinned-actions": "pass",
+      "workflow.dependabot-actions": "pass",
+      "workflow.stale-secrets": "pass"
+    }
+  }
+}

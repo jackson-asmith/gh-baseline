@@ -1,0 +1,232 @@
+{
+  "generatedAt": "2026-10-14T14:15:34.681634Z",
+  "host": "github.com",
+  "owner": "jackson-asmith",
+  "repos": [
+    {
+      "name": "retired-gem",
+      "defaultBranch": "master",
+      "private": true,
+      "fork": false,
+      "archived": false,
+      "pushedAt": "2020-02-25T21:23:10Z",
+      "rules": null,
+      "rulesetsUnavailable": true,
+      "workflows": [
+        {
+          "path": ".github/workflows/gempush.yml",
+          "content": "name: Ruby Gem\n\non:\n  pull_request:\n    branches:\n      - master\n  push:\n    branches:\n      - master\n\njobs:\n  build:\n    name: Build + Publish\n    runs-on: ubuntu-latest\n\n    steps:\n    - uses: actions/checkout@v2\n    - name: Set up Ruby 2.6\n      uses: actions/setup-ruby@v1\n      with:\n        version: 2.6.x\n\n    - name: Publish to GPR\n      run: |\n        mkdir -p $HOME/.gem\n        touch $HOME/.gem/credentials\n        chmod 0600 $HOME/.gem/credentials\n        printf -- \"---\\n:github: Bearer ${GEM_HOST_API_KEY}\\n\" > $HOME/.gem/credentials\n        gem build *.gemspec\n        gem push --KEY github --host https://rubygems.pkg.github.com/${OWNER} *.gem\n      env:\n        GEM_HOST_API_KEY: ${{secrets.GPR_AUTH_TOKEN}}\n        OWNER: username\n\n    - name: Publish to RubyGems\n      run: |\n        mkdir -p $HOME/.gem\n        touch $HOME/.gem/credentials\n        chmod 0600 $HOME/.gem/credentials\n        printf -- \"---\\n:rubygems_api_key: ${GEM_HOST_API_KEY}\\n\" > $HOME/.gem/credentials\n        gem build *.gemspec\n        gem push *.gem\n      env:\n        GEM_HOST_API_KEY: ${{secrets.RUBYGEMS_AUTH_TOKEN}}\n"
+        }
+      ],
+      "secrets": [],
+      "errors": {
+        "security": "security_and_analysis not returned (token may lack admin access)",
+        "vulnReporting": "HTTP 404: Not Found"
+      }
+    },
+    {
+      "name": "PublicPowerShell",
+      "defaultBranch": "master",
+      "private": false,
+      "fork": false,
+      "archived": false,
+      "pushedAt": "2026-06-18T17:23:17Z",
+      "security": {
+        "dependabot_security_updates": "enabled",
+        "secret_scanning": "disabled",
+        "secret_scanning_non_provider_patterns": "disabled",
+        "secret_scanning_push_protection": "disabled",
+        "secret_scanning_validity_checks": "disabled"
+      },
+      "vulnReporting": true,
+      "rules": [],
+      "workflows": [],
+      "secrets": null
+    },
+    {
+      "name": "TimeCapsuleSMB",
+      "defaultBranch": "main",
+      "private": false,
+      "fork": true,
+      "archived": false,
+      "pushedAt": "2026-07-14T12:29:52Z",
+      "security": {
+        "dependabot_security_updates": "enabled",
+        "secret_scanning": "enabled",
+        "secret_scanning_non_provider_patterns": "disabled",
+        "secret_scanning_push_protection": "enabled",
+        "secret_scanning_validity_checks": "disabled"
+      },
+      "vulnReporting": true,
+      "rules": [
+        {
+          "type": "deletion",
+          "ruleset_id": 25015329
+        },
+        {
+          "type": "non_fast_forward",
+          "ruleset_id": 25015329
+        }
+      ],
+      "workflows": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "content": "name: CI\n\non:\n  push:\n  pull_request:\n\njobs:\n  test:\n    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})\n    runs-on: ${{ matrix.os }}\n    strategy:\n      fail-fast: false\n      matrix:\n        os:\n          - ubuntu-latest\n          - macos-latest\n        python-version:\n          - \"3.9\"\n          - \"3.12\"\n          - \"3.14\"\n\n    steps:\n      - name: Check out repository\n        uses: actions/checkout@v7\n\n      - name: Set up Python\n        uses: actions/setup-python@v6\n        with:\n          python-version: ${{ matrix.python-version }}\n\n      - name: Upgrade pip\n        run: python -m pip install --upgrade pip\n\n      - name: Install Python dependencies\n        run: |\n          python -m pip install -r requirements.txt\n          python -m pip install -e \".[dev]\"\n\n      - name: Compile mdns-advertiser\n        run: cc -Wall -Wextra -Werror -o /tmp/mdns-advertiser-test build/mdns-advertiser.c\n\n      - name: Compile nbns-advertiser\n        run: cc -Wall -Wextra -Werror -o /tmp/nbns-advertiser-test build/nbns-advertiser.c\n\n      - name: Run Ruff\n        run: python -m ruff check src tests macos/TimeCapsuleSMB/tools tcapsule\n\n      - name: Verify checked-in artifact manifest\n        run: python -m pytest tests/test_artifacts.py tests/test_artifact_resolver.py\n\n      - name: Run full test suite\n        run: python -m pytest\n\n  swift-test:\n    name: Swift Tests (macOS)\n    runs-on: macos-latest\n\n    steps:\n      - name: Check out repository\n        uses: actions/checkout@v7\n\n      - name: Show tool versions\n        run: |\n          xcodebuild -version\n          swift --version\n\n      - name: Run Swift tests\n        run: swift test --package-path macos/TimeCapsuleSMB\n\n  package-app:\n    name: Package App (macOS native)\n    runs-on: macos-latest\n    needs:\n      - swift-test\n    env:\n      HOMEBREW_NO_INSTALL_CLEANUP: \"1\"\n\n    steps:\n      - name: Check out repository\n        uses: actions/checkout@v7\n\n      - name: Restore package cache\n        uses: actions/cache@v6\n        with:\n          path: macos/TimeCapsuleSMB/.build/package-app\n          key: package-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('macos/TimeCapsuleSMB/tools/package_app.py', 'macos/TimeCapsuleSMB/Package.swift', 'macos/TimeCapsuleSMB/Assets/AppIcon/tcs.jpg', 'pyproject.toml', 'requirements.txt', 'src/**', 'bin/**') }}\n          restore-keys: |\n            package-app-${{ runner.os }}-${{ runner.arch }}-\n\n      - name: Install native packaging tools\n        run: |\n          brew install samba\n          brew tap hudochenkov/sshpass\n          brew install sshpass\n\n          smbclient=\"$(brew --prefix samba)/bin/smbclient\"\n          sshpass=\"$(brew --prefix sshpass)/bin/sshpass\"\n\n          test -x \"$smbclient\"\n          test -x \"$sshpass\"\n          file \"$smbclient\" \"$sshpass\"\n          lipo -archs \"$smbclient\"\n          lipo -archs \"$sshpass\"\n\n          {\n            echo \"TCAPSULE_PACKAGE_SMBCLIENT=$smbclient\"\n            echo \"TCAPSULE_PACKAGE_SSHPASS=$sshpass\"\n          } >> \"$GITHUB_ENV\"\n\n      - name: Package and validate native app\n        run: |\n          python3 macos/TimeCapsuleSMB/tools/package_app.py \\\n            --configuration release \\\n            --arch native \\\n            --full-validation\n"
+        },
+        {
+          "path": ".github/workflows/codeql.yml",
+          "content": "name: CodeQL\n\non:\n  push:\n    branches:\n      - main\n  pull_request:\n    branches:\n      - main\n  schedule:\n    - cron: \"36 5 * * 1\"\n\npermissions:\n  actions: read\n  contents: read\n  security-events: write\n\njobs:\n  analyze:\n    name: Analyze (${{ matrix.language }})\n    runs-on: ubuntu-latest\n    strategy:\n      fail-fast: false\n      matrix:\n        language:\n          - python\n\n    steps:\n      - name: Check out repository\n        uses: actions/checkout@v7\n\n      - name: Initialize CodeQL\n        uses: github/codeql-action/init@v4\n        with:\n          languages: ${{ matrix.language }}\n\n      - name: Perform CodeQL analysis\n        uses: github/codeql-action/analyze@v4\n        with:\n          category: \"/language:${{ matrix.language }}\"\n"
+        }
+      ],
+      "dependabot": {
+        "path": ".github/dependabot.yml",
+        "content": "version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n      day: monday\n      time: \"09:00\"\n      timezone: America/Los_Angeles\n\n  - package-ecosystem: pip\n    directory: /\n    schedule:\n      interval: weekly\n      day: monday\n      time: \"09:00\"\n      timezone: America/Los_Angeles\n    groups:\n      python-dependencies:\n        patterns:\n          - \"*\"\n\n  - package-ecosystem: swift\n    directory: /macos/TimeCapsuleSMB\n    schedule:\n      interval: weekly\n      day: monday\n      time: \"09:00\"\n      timezone: America/Los_Angeles\n"
+      },
+      "secrets": []
+    },
+    {
+      "name": "keel",
+      "defaultBranch": "main",
+      "private": false,
+      "fork": false,
+      "archived": false,
+      "pushedAt": "2026-10-13T16:29:13Z",
+      "security": {
+        "dependabot_security_updates": "enabled",
+        "secret_scanning": "enabled",
+        "secret_scanning_non_provider_patterns": "disabled",
+        "secret_scanning_push_protection": "enabled",
+        "secret_scanning_validity_checks": "disabled"
+      },
+      "vulnReporting": true,
+      "rules": [
+        {
+          "type": "deletion",
+          "ruleset_id": 24218162
+        },
+        {
+          "type": "non_fast_forward",
+          "ruleset_id": 24218162
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": false,
+            "required_reviewers": [],
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": true,
+            "require_extra_approval_for_unattributed_changes": true,
+            "allowed_merge_methods": [
+              "merge",
+              "squash",
+              "rebase"
+            ]
+          },
+          "ruleset_id": 24218162
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "strict_required_status_checks_policy": true,
+            "do_not_enforce_on_create": false,
+            "required_status_checks": [
+              {
+                "context": "Lint",
+                "integration_id": 15368
+              },
+              {
+                "context": "Test (Linux, PowerShell 7)",
+                "integration_id": 15368
+              },
+              {
+                "context": "Test (macOS, PowerShell 7)",
+                "integration_id": 15368
+              },
+              {
+                "context": "Test (Windows, PowerShell 7)",
+                "integration_id": 15368
+              },
+              {
+                "context": "Test (Windows PowerShell 5.1)",
+                "integration_id": 15368
+              },
+              {
+                "context": "Integration (Graph SDK pinned)",
+                "integration_id": 15368
+              }
+            ]
+          },
+          "ruleset_id": 24218162
+        }
+      ],
+      "workflows": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "content": "name: CI\n\non:\n  pull_request:\n  push:\n    branches: [main]\n  schedule:\n    # Mondays 06:00 UTC: run the SDK integration tests against the latest\n    # Microsoft.Graph.Authentication to catch SDK behavior changes early.\n    - cron: '0 6 * * 1'\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n\njobs:\n  lint:\n    name: Lint\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n\n      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n        with:\n          path: .tools\n          key: tools-lint-${{ hashFiles('build.ps1') }}\n\n      - name: PSScriptAnalyzer and manifests\n        shell: pwsh\n        run: ./build.ps1 -Task Lint\n\n  test:\n    name: Test (${{ matrix.name }})\n    runs-on: ${{ matrix.os }}\n    strategy:\n      fail-fast: false\n      matrix:\n        include:\n          - { name: 'Linux, PowerShell 7', os: ubuntu-latest, shell: pwsh }\n          - { name: 'macOS, PowerShell 7', os: macos-latest, shell: pwsh }\n          - { name: 'Windows, PowerShell 7', os: windows-latest, shell: pwsh }\n          - { name: 'Windows PowerShell 5.1', os: windows-latest, shell: powershell }\n    defaults:\n      run:\n        shell: ${{ matrix.shell }}\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n\n      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n        with:\n          path: .tools\n          key: tools-test-${{ runner.os }}-${{ matrix.shell }}-${{ hashFiles('build.ps1') }}\n\n      - name: Pester unit tests\n        run: ./build.ps1 -Task Test\n\n      - name: Upload test results\n        if: ${{ !cancelled() }}\n        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1\n        with:\n          name: test-results-${{ runner.os }}-${{ matrix.shell }}\n          path: TestResults/\n          if-no-files-found: ignore\n\n  integration:\n    # macOS lets an unprivileged process bind port 80, which the SDK tests'\n    # stub Graph endpoint needs. See Modules/keel.Mail/Tests/keel.Mail.Sdk.Tests.ps1.\n    name: Integration (Graph SDK ${{ matrix.sdk }})\n    runs-on: macos-latest\n    strategy:\n      fail-fast: false\n      matrix:\n        # Pinned on every run; latest only on the weekly schedule or when started by hand.\n        sdk: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[\"pinned\", \"latest\"]' || '[\"pinned\"]') }}\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n\n      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n        if: ${{ matrix.sdk == 'pinned' }}\n        with:\n          path: .tools\n          key: tools-integration-${{ hashFiles('build.ps1') }}\n\n      - name: Pester integration tests\n        shell: pwsh\n        env:\n          SDK_CHANNEL: ${{ matrix.sdk }}\n        run: |\n          if ($env:SDK_CHANNEL -eq 'latest') {\n              ./build.ps1 -Task Integration -GraphSdkVersion Latest\n          }\n          else {\n              ./build.ps1 -Task Integration\n          }\n\n      - name: Upload test results\n        if: ${{ !cancelled() }}\n        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1\n        with:\n          name: integration-results-${{ matrix.sdk }}\n          path: TestResults/\n          if-no-files-found: ignore\n"
+        }
+      ],
+      "dependabot": {
+        "path": ".github/dependabot.yml",
+        "content": "version: 2\nupdates:\n  # Keeps the SHA-pinned actions in .github/workflows current.\n  # PowerShell Gallery tools are pinned in build.ps1 and updated by hand.\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n    groups:\n      actions:\n        patterns: ['*']\n"
+      },
+      "secrets": []
+    },
+    {
+      "name": "jacksonsmith.github.io",
+      "defaultBranch": "gh-pages",
+      "private": false,
+      "fork": false,
+      "archived": false,
+      "pushedAt": "2026-10-13T21:20:07Z",
+      "security": {
+        "dependabot_security_updates": "enabled",
+        "secret_scanning": "enabled",
+        "secret_scanning_non_provider_patterns": "disabled",
+        "secret_scanning_push_protection": "enabled",
+        "secret_scanning_validity_checks": "disabled"
+      },
+      "vulnReporting": true,
+      "rules": [
+        {
+          "type": "deletion",
+          "ruleset_id": 24394970
+        },
+        {
+          "type": "non_fast_forward",
+          "ruleset_id": 24394970
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": false,
+            "required_reviewers": [],
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": true,
+            "require_extra_approval_for_unattributed_changes": true,
+            "allowed_merge_methods": [
+              "merge",
+              "squash",
+              "rebase"
+            ]
+          },
+          "ruleset_id": 24394970
+        }
+      ],
+      "workflows": [
+        {
+          "path": ".github/workflows/check-security-txt.yml",
+          "content": "name: Check security.txt\n\non:\n  schedule:\n    - cron: \"17 13 * * 1\" # Mondays, 13:17 UTC\n  workflow_dispatch:\n  pull_request:\n    paths:\n      - \".well-known/security.txt\"\n      - \".github/workflows/check-security-txt.yml\"\n      - \".github/scripts/check-security-txt.sh\"\n\npermissions:\n  contents: read\n  actions: write # Re-enable this workflow's schedule (inactivity keepalive)\n\nconcurrency:\n  group: security-txt\n  cancel-in-progress: false\n\njobs:\n  check:\n    runs-on: ubuntu-latest\n\n    steps:\n      - name: Checkout\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n\n      # On a pull request, check the proposed file before it ships.\n      - name: Check proposed security.txt\n        if: github.event_name == 'pull_request'\n        run: bash .github/scripts/check-security-txt.sh .well-known/security.txt 60\n\n      # Otherwise check what visitors and scanners actually receive.\n      - name: Check live security.txt\n        if: github.event_name != 'pull_request'\n        run: bash .github/scripts/check-security-txt.sh https://jacksonasmith.com/.well-known/security.txt 60\n\n      - name: Keep scheduled workflow enabled\n        if: always() && github.event_name != 'pull_request'\n        env:\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          # GitHub disables cron schedules after 60 days without repository\n          # activity, and scheduled runs don't count as activity.\n          # Re-enabling on every run resets that timer.\n          gh api -X PUT \"repos/${{ github.repository }}/actions/workflows/check-security-txt.yml/enable\"\n"
+        }
+      ],
+      "dependabot": {
+        "path": ".github/dependabot.yml",
+        "content": "version: 2\nupdates:\n  # Keeps the SHA-pinned actions in .github/workflows current.\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n    groups:\n      actions:\n        patterns: ['*']\n"
+      },
+      "secrets": []
+    }
+  ]
+}
