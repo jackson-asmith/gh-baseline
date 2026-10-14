@@ -197,6 +197,30 @@ func TestEvaluateUnreadableRepoIsUnknown(t *testing.T) {
 	}
 }
 
+func TestCountMessages(t *testing.T) {
+	tests := []struct {
+		check  string
+		mutate func(*snapshot.Repo)
+		want   string
+	}{
+		{"ruleset.status-checks", func(r *snapshot.Repo) {}, "1 status check required"},
+		{"ruleset.status-checks", func(r *snapshot.Repo) { r.Rules[3] = checksRule(ptr(int64(1)), ptr(int64(2))) }, "2 status checks required"},
+		{"ruleset.check-source", func(r *snapshot.Repo) {}, "the required check is pinned to a source"},
+		{"ruleset.check-source", func(r *snapshot.Repo) { r.Rules[3] = checksRule(ptr(int64(1)), ptr(int64(2))) }, "all 2 required checks are pinned to a source"},
+		{"workflow.stale-secrets", func(r *snapshot.Repo) { r.PushedAt = now.AddDate(0, 0, -1) }, "last push 1 day ago"},
+		{"workflow.stale-secrets", func(r *snapshot.Repo) { r.PushedAt = now.AddDate(0, 0, -3) }, "last push 3 days ago"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			r := healthy()
+			tt.mutate(&r)
+			if _, msg := byID(t, tt.check).Run(Input{Repo: r, Tier: ciTier, Now: now, StaleDays: 365}); msg != tt.want {
+				t.Errorf("%s message = %q, want %q", tt.check, msg, tt.want)
+			}
+		})
+	}
+}
+
 func TestEvaluateUsesTierAndAddsRemediation(t *testing.T) {
 	bare := healthy()
 	bare.Name = "Scratch"

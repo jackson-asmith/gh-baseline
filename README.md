@@ -140,6 +140,18 @@ you audit, plus Secrets, Actions, and Environments so `workflow.stale-secrets`
 can see which secrets exist. Only names are read, never values. Nothing needs
 write access.
 
+## Upgrading to v0.2.0
+
+- `workflow.stale-secrets` now checks that the secrets a stale workflow uses
+  still exist, instead of assuming every `${{ secrets.X }}` is live. Repos
+  whose workflows only mention deleted secrets now pass.
+- A fine-grained token needs three more read-only permissions for that:
+  Secrets, Actions, and Environments. Without them the check reports
+  `unknown` for stale repositories. A `gh` login already has them.
+- Snapshots saved by v0.1.0 don't record secrets, so replaying one with
+  `--snapshot` reports `unknown` for stale repositories that use secrets.
+  Collect a fresh snapshot to get a result.
+
 ## Development
 
 ```sh
