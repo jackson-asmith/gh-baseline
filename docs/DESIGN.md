@@ -25,8 +25,9 @@ every place an account's repositories differ from it.
 - **Honest results.** Anything the API won't show is reported as `unknown`,
   never as a pass.
 - **Read-only.** The tool never changes a repository. Remediation is text.
-- **Zero dependencies.** Standard library only. A supply-chain auditing tool
-  should not itself carry a dependency tree.
+- **Minimal dependencies.** One third-party package (`gopkg.in/yaml.v3`) for
+  correct workflow YAML parsing; everything else is standard library. A
+  supply-chain auditing tool should not itself carry a dependency tree.
 - **Runs anywhere `gh` does**, including GitHub Enterprise via `GH_HOST`.
 
 ## Non-goals (for now)
