@@ -52,7 +52,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		hostname     = flags.String("hostname", "", "GitHub host (default: GH_HOST or github.com)")
 		snapIn       = flags.String("snapshot", "", "evaluate a saved snapshot instead of calling the API")
 		snapOut      = flags.String("save-snapshot", "", "write the collected snapshot to this file")
-		format       = flags.String("format", "table", "output format: table or json")
+		format       = flags.String("format", "table", "output format: table, json, or sarif")
 		all          = flags.Bool("all", false, "show passing and skipped checks too (table format)")
 		repos        listFlag
 	)
@@ -67,7 +67,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return exitError
 	}
-	if *format != "table" && *format != "json" {
+	if *format != "table" && *format != "json" && *format != "sarif" {
 		return fail("unknown format %q", *format)
 	}
 
@@ -117,9 +117,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	findings := check.Evaluate(snap, b, time.Now())
 	var err error
-	if *format == "json" {
+	switch *format {
+	case "json":
 		err = report.JSON(stdout, findings)
-	} else {
+	case "sarif":
+		err = report.SARIF(stdout, findings)
+	default:
 		err = report.Table(stdout, findings, *all)
 	}
 	if err != nil {

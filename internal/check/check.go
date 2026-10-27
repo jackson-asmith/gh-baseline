@@ -104,6 +104,23 @@ func unknownIf(r snapshot.Repo, field string) (Status, string, bool) {
 	return "", "", false
 }
 
+// Descriptor is the static metadata for one check, used by report formats
+// that need the full rule catalog independent of which checks fired.
+type Descriptor struct {
+	ID          string
+	Severity    Severity
+	Remediation string
+}
+
+// Catalog returns the static metadata for every check in report order.
+func Catalog() []Descriptor {
+	out := make([]Descriptor, len(catalog))
+	for i, c := range catalog {
+		out[i] = Descriptor{ID: c.ID, Severity: c.Severity, Remediation: c.Remediation}
+	}
+	return out
+}
+
 // catalog is every check, in report order.
 var catalog = []Check{
 	{

@@ -176,7 +176,11 @@ doesn't cover.
 
 ## Roadmap
 
-1. SARIF output, so findings can be uploaded to code scanning.
+1. ~~SARIF output, so findings can be uploaded to code scanning.~~ Done:
+   `--format sarif` emits SARIF 2.1.0. Locations are repo-level logical
+   locations; file-level locations for workflow findings (pointing at the
+   specific `.github/workflows/*.yml` that failed) are a possible follow-up
+   and would require a `Location` field on `Finding`.
 2. A scheduled workflow that opens or updates an issue on drift. This is what
    Allstar's issue mode does for organizations; it's worth building only to
    serve personal accounts without hosting an app.
