@@ -55,16 +55,24 @@ jobs:
 }
 
 func TestUnpinnedUsesAcrossLines(t *testing.T) {
-	// Found by FuzzUnpinnedUses: a value on the line after `uses:` is valid
-	// YAML, and a comment line in between must not hide it.
+	// A value on the line after `uses:` is valid YAML; the YAML parser handles
+	// this naturally. A commented-out step must not be reported.
 	tests := []struct {
 		name    string
 		content string
 		want    []string
 	}{
-		{"value on the next line", "steps:\n  - uses:\n      actions/cache@v4\n", []string{"actions/cache@v4"}},
-		{"comment before the value", "steps:\n  - uses:\n      # cache\n      actions/cache@v4\n", []string{"actions/cache@v4"}},
-		{"commented-out step", "steps:\n  # - uses: actions/cache@v4\n", nil},
+		{
+			"value on the next line",
+			"jobs:\n  a:\n    steps:\n      - uses:\n          actions/cache@v4\n",
+			[]string{"actions/cache@v4"},
+		},
+		{
+			"comment before the value",
+			"jobs:\n  a:\n    steps:\n      - uses:\n          # cache\n          actions/cache@v4\n",
+			[]string{"actions/cache@v4"},
+		},
+		{"commented-out step", "jobs:\n  a:\n    steps:\n      # - uses: actions/cache@v4\n", nil},
 		{"colon on the next line is not a key", "uses\n: actions/cache@v4\n", nil},
 	}
 	for _, tt := range tests {
@@ -73,6 +81,16 @@ func TestUnpinnedUsesAcrossLines(t *testing.T) {
 				t.Errorf("unpinnedUses(%q) = %q, want %q", tt.content, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestUnpinnedUsesIgnoresRunBlocks(t *testing.T) {
+	// A `uses:` string inside a run: block scalar must not be reported as an
+	// action reference. The line-based parser was susceptible to this false
+	// positive; the YAML parser is not.
+	content := "jobs:\n  a:\n    steps:\n      - run: |\n          uses: bad/action@v1\n"
+	if got := unpinnedUses(content); got != nil {
+		t.Errorf("unpinnedUses reported %q from inside a run: block", got)
 	}
 }
 
