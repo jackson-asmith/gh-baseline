@@ -55,7 +55,8 @@ func healthy() snapshot.Repo {
 			"secret_scanning":                 "enabled",
 			"secret_scanning_push_protection": "enabled",
 		},
-		VulnReporting: ptr(true),
+		VulnReporting:  ptr(true),
+		SecurityPolicy: ptr(true),
 		Rules: []snapshot.Rule{
 			rule("deletion", nil),
 			rule("non_fast_forward", nil),
@@ -129,6 +130,14 @@ func TestChecks(t *testing.T) {
 		{"security.secret-scanning", "private repo", func(r *snapshot.Repo) { r.Private = true }, ciTier, Skip, "private"},
 		{"security.secret-scanning", "settings unreadable", func(r *snapshot.Repo) { r.Security = nil; r.Errors = map[string]string{"security": "x"} }, ciTier, Unknown, ""},
 		{"security.push-protection", "status not returned", func(r *snapshot.Repo) { delete(r.Security, "secret_scanning_push_protection") }, ciTier, Unknown, "not returned"},
+
+		{"security.security-policy", "missing", func(r *snapshot.Repo) { r.SecurityPolicy = ptr(false) }, ciTier, Fail, "no SECURITY.md"},
+		{"security.security-policy", "private repo", func(r *snapshot.Repo) { r.Private = true }, ciTier, Skip, "private"},
+		{"security.security-policy", "not collected", func(r *snapshot.Repo) { r.SecurityPolicy = nil }, ciTier, Unknown, "not collected"},
+		{"security.security-policy", "api error", func(r *snapshot.Repo) {
+			r.SecurityPolicy = nil
+			r.Errors = map[string]string{"securityPolicy": "HTTP 403"}
+		}, ciTier, Unknown, "HTTP 403"},
 
 		{"security.vuln-reporting", "off", func(r *snapshot.Repo) { r.VulnReporting = ptr(false) }, ciTier, Fail, "off"},
 

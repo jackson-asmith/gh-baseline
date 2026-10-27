@@ -35,6 +35,7 @@ func fakeAPI(t *testing.T) *httptest.Server {
 		"/users/me/repos": "[]",
 		"/repos/me/app":   repo("app", ""),
 		"/repos/me/app/private-vulnerability-reporting":   `{"enabled":true}`,
+		"/repos/me/app/community/profile":                 `{"files":{"security":{"url":"https://api.github.com/repos/me/app/contents/SECURITY.md"}}}`,
 		"/repos/me/app/rules/branches/main":               `[{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test","integration_id":15368}]}}]`,
 		"/repos/me/app/contents/.github/workflows":        `[{"path":".github/workflows/ci.yml","type":"file"},{"path":".github/workflows/README.md","type":"file"}]`,
 		"/repos/me/app/contents/.github/workflows/ci.yml": `{"encoding":"base64","content":"` + b64("permissions: {}\n") + `"}`,

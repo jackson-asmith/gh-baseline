@@ -35,6 +35,10 @@ type Repo struct {
 	// VulnReporting is private vulnerability reporting; nil if unknown.
 	VulnReporting *bool `json:"vulnReporting,omitempty"`
 
+	// SecurityPolicy is true when a SECURITY.md exists (in any location GitHub
+	// recognises: root, .github/, or docs/). Nil means not collected.
+	SecurityPolicy *bool `json:"securityPolicy,omitempty"`
+
 	// Rules are the effective rules on the default branch, from every
 	// ruleset that applies.
 	Rules []Rule `json:"rules"`
@@ -77,13 +81,14 @@ type File struct {
 
 // Field names used as keys in Repo.Errors.
 const (
-	FieldRepo          = "repo" // the repository itself; every check is unknown
-	FieldSecurity      = "security"
-	FieldVulnReporting = "vulnReporting"
-	FieldRules         = "rules"
-	FieldWorkflows     = "workflows"
-	FieldDependabot    = "dependabot"
-	FieldSecrets       = "secrets"
+	FieldRepo           = "repo" // the repository itself; every check is unknown
+	FieldSecurity       = "security"
+	FieldVulnReporting  = "vulnReporting"
+	FieldRules          = "rules"
+	FieldWorkflows      = "workflows"
+	FieldDependabot     = "dependabot"
+	FieldSecrets        = "secrets"
+	FieldSecurityPolicy = "securityPolicy"
 )
 
 // HasRule reports whether an effective rule of type t exists.
