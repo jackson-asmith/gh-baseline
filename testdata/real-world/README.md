@@ -2,6 +2,8 @@
 
 A snapshot of five real repositories, collected on 2026-10-14 with
 `--save-snapshot`, and the findings a manual audit expected for them.
+The `securityPolicy` field was added on 2026-10-27 by querying the community
+profile API directly and verifying each repo by hand.
 
 - `snapshot.json` is the collected state. The one private repository is
   renamed `retired-gem`; nothing else is changed.
