@@ -35,6 +35,7 @@ const (
 
 // Finding is one check's result for one repository.
 type Finding struct {
+	Owner       string   `json:"owner"`
 	Repo        string   `json:"repo"`
 	Tier        string   `json:"tier"`
 	Check       string   `json:"check"`
@@ -75,7 +76,7 @@ func Evaluate(s *snapshot.Snapshot, b *baseline.Baseline, now time.Time) []Findi
 			} else {
 				st, msg = c.Run(in)
 			}
-			f := Finding{Repo: r.Name, Tier: tierName, Check: c.ID, Status: st, Severity: c.Severity, Message: msg}
+			f := Finding{Owner: s.Owner, Repo: r.Name, Tier: tierName, Check: c.ID, Status: st, Severity: c.Severity, Message: msg}
 			if st == Fail || st == Unknown {
 				f.Remediation = c.Remediation
 			}

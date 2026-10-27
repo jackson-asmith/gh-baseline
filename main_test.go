@@ -43,6 +43,48 @@ func TestReplayTable(t *testing.T) {
 	}
 }
 
+func TestReplaySARIF(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := run([]string{"--snapshot", fixture, "--baseline", writeBaseline(t), "--format", "sarif"}, &out, &errOut)
+	if code != exitFindings {
+		t.Fatalf("exit %d, want %d; stderr: %s", code, exitFindings, errOut.String())
+	}
+	var doc struct {
+		Version string `json:"version"`
+		Runs    []struct {
+			Results []struct {
+				RuleID    string `json:"ruleId"`
+				Locations []struct {
+					LogicalLocations []struct {
+						Name string `json:"name"`
+					} `json:"logicalLocations"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("SARIF output is not valid JSON: %v\n%s", err, out.String())
+	}
+	if doc.Version != "2.1.0" {
+		t.Errorf("version = %q, want 2.1.0", doc.Version)
+	}
+	results := doc.Runs[0].Results
+	if len(results) == 0 {
+		t.Fatal("expected at least one result in SARIF output")
+	}
+	// Logical locations must use owner/repo, not bare name.
+	for _, r := range results {
+		if len(r.Locations) == 0 || len(r.Locations[0].LogicalLocations) == 0 {
+			t.Errorf("result %q has no logical location", r.RuleID)
+			continue
+		}
+		name := r.Locations[0].LogicalLocations[0].Name
+		if !strings.Contains(name, "/") {
+			t.Errorf("result %q logicalLocation.name = %q, want owner/repo format", r.RuleID, name)
+		}
+	}
+}
+
 func TestReplayJSONAll(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := run([]string{"--snapshot", fixture, "--baseline", writeBaseline(t), "--format", "json"}, &out, &errOut)

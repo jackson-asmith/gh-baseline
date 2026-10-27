@@ -102,12 +102,16 @@ func SARIF(w io.Writer, fs []check.Finding) error {
 		if f.Status != check.Fail && f.Status != check.Unknown {
 			continue
 		}
+		name := f.Owner + "/" + f.Repo
+		if f.Owner == "" {
+			name = f.Repo
+		}
 		results = append(results, sarifResult{
 			RuleID:  f.Check,
 			Level:   sarifLevel(f.Status, f.Severity),
 			Message: sarifText{Text: f.Message},
 			Locations: []sarifLocation{{
-				LogicalLocations: []sarifLogicalLocation{{Name: f.Repo, Kind: "repository"}},
+				LogicalLocations: []sarifLogicalLocation{{Name: name, Kind: "repository"}},
 			}},
 		})
 	}
