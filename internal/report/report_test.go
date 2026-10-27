@@ -11,11 +11,11 @@ import (
 )
 
 var sampleFindings = []check.Finding{
-	{Repo: "myrepo", Check: "ruleset.branch-safety", Status: check.Fail, Severity: check.High, Message: "master allows deletion"},
-	{Repo: "myrepo", Check: "ruleset.pull-request", Status: check.Pass, Severity: check.Medium, Message: "pull request required"},
-	{Repo: "myrepo", Check: "security.secret-scanning", Status: check.Unknown, Severity: check.High, Message: "couldn't read security"},
-	{Repo: "myrepo", Check: "workflow.dependabot-actions", Status: check.Skip, Severity: check.Low, Message: "no workflows"},
-	{Repo: "myrepo", Check: "workflow.token-permissions", Status: check.Fail, Severity: check.Medium, Message: "no top-level permissions: .github/workflows/ci.yml"},
+	{Owner: "acme", Repo: "myrepo", Check: "ruleset.branch-safety", Status: check.Fail, Severity: check.High, Message: "master allows deletion"},
+	{Owner: "acme", Repo: "myrepo", Check: "ruleset.pull-request", Status: check.Pass, Severity: check.Medium, Message: "pull request required"},
+	{Owner: "acme", Repo: "myrepo", Check: "security.secret-scanning", Status: check.Unknown, Severity: check.High, Message: "couldn't read security"},
+	{Owner: "acme", Repo: "myrepo", Check: "workflow.dependabot-actions", Status: check.Skip, Severity: check.Low, Message: "no workflows"},
+	{Owner: "acme", Repo: "myrepo", Check: "workflow.token-permissions", Status: check.Fail, Severity: check.Medium, Message: "no top-level permissions: .github/workflows/ci.yml"},
 }
 
 func TestSARIF_ValidJSON(t *testing.T) {
@@ -139,8 +139,8 @@ func TestSARIF_LogicalLocation(t *testing.T) {
 			t.Error("result has no logicalLocations")
 			continue
 		}
-		if ll[0].Name != "myrepo" {
-			t.Errorf("logicalLocation.name = %q, want %q", ll[0].Name, "myrepo")
+		if ll[0].Name != "acme/myrepo" {
+			t.Errorf("logicalLocation.name = %q, want %q", ll[0].Name, "acme/myrepo")
 		}
 		if ll[0].Kind != "repository" {
 			t.Errorf("logicalLocation.kind = %q, want %q", ll[0].Kind, "repository")

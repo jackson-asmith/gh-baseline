@@ -88,6 +88,9 @@ func TestCollectListsAndFilters(t *testing.T) {
 	if r.VulnReporting == nil || !*r.VulnReporting {
 		t.Errorf("vulnReporting = %v", r.VulnReporting)
 	}
+	if r.SecurityPolicy == nil || !*r.SecurityPolicy {
+		t.Errorf("securityPolicy = %v", r.SecurityPolicy)
+	}
 	checks, err := r.RequiredChecks()
 	if err != nil || !r.HasRule("deletion") || len(checks) != 1 || *checks[0].IntegrationID != 15368 {
 		t.Errorf("rules = %+v", r.Rules)
