@@ -6,17 +6,16 @@ import (
 	"testing"
 )
 
-// workflowSeeds are realistic workflow fragments to start fuzzing from.
+// workflowSeeds are realistic workflow documents to start fuzzing from.
 var workflowSeeds = []string{
 	"on: push\npermissions:\n  contents: read\njobs: {}\n",
 	"permissions: read-all\n",
 	"jobs:\n  build:\n    permissions:\n      contents: read\n",
 	"jobs:\n  a:\n    uses: ./.github/workflows/lint.yml\n",
-	"steps:\n  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n  - uses: actions/setup-go@v6\n",
-	"steps:\n  - name: quoted\n    uses: \"ludeeus/action-shellcheck@2.0.0\"\n",
-	"steps:\n  - uses: docker://alpine:3.20\n  - uses: docker://alpine@sha256:0123456789abcdef\n",
-	"steps:\n  - run: |\n      echo uses: not/an-action@v1\n",
-	"steps:\r\n  - uses: actions/cache@v4\r\n",
+	"jobs:\n  b:\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n      - uses: actions/setup-go@v6\n",
+	"jobs:\n  b:\n    steps:\n      - name: quoted\n        uses: \"ludeeus/action-shellcheck@2.0.0\"\n",
+	"jobs:\n  b:\n    steps:\n      - uses: docker://alpine:3.20\n      - uses: docker://alpine@sha256:0123456789abcdef\n",
+	"jobs:\n  b:\n    steps:\n      - run: |\n          uses: not/an-action@v1\n",
 }
 
 // withCommentsAndBlanks puts a blank line and comment lines between every
