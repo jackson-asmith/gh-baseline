@@ -108,6 +108,7 @@ belongs in `basic`, since requiring a pull request would break it.
 | `security.secret-scanning` | Secret scanning is off (public repos) |
 | `security.push-protection` | Push protection is off (public repos) |
 | `security.vuln-reporting` | Private vulnerability reporting is off (public repos) |
+| `security.security-policy` | No SECURITY.md exists (public repos) |
 | `workflow.token-permissions` | A workflow has no top-level `permissions:` |
 | `workflow.pinned-actions` | An action is referenced by tag or branch instead of a commit SHA |
 | `workflow.dependabot-actions` | Workflows exist but Dependabot doesn't keep them updated |
@@ -124,8 +125,8 @@ matter which ruleset (or how many) provides them.
   permissions aren't visible to it at all. The one exception: private repos
   on a free plan can't have rulesets, so the ruleset checks skip them instead
   of reporting `unknown`.
-- **No dependencies.** Standard library only. A tool for auditing supply-chain
-  settings shouldn't bring its own supply chain.
+- **Minimal dependencies.** One third-party package (`gopkg.in/yaml.v3`) for
+  correct workflow YAML parsing; everything else is standard library.
 - **Checks are pure functions** of a saved snapshot, so they're tested against
   fixtures and never need the network.
 

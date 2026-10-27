@@ -41,7 +41,8 @@
       "vulnReporting": true,
       "rules": [],
       "workflows": [],
-      "secrets": null
+      "secrets": null,
+      "securityPolicy": false
     },
     {
       "name": "TimeCapsuleSMB",
@@ -82,7 +83,8 @@
         "path": ".github/dependabot.yml",
         "content": "version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n      day: monday\n      time: \"09:00\"\n      timezone: America/Los_Angeles\n\n  - package-ecosystem: pip\n    directory: /\n    schedule:\n      interval: weekly\n      day: monday\n      time: \"09:00\"\n      timezone: America/Los_Angeles\n    groups:\n      python-dependencies:\n        patterns:\n          - \"*\"\n\n  - package-ecosystem: swift\n    directory: /macos/TimeCapsuleSMB\n    schedule:\n      interval: weekly\n      day: monday\n      time: \"09:00\"\n      timezone: America/Los_Angeles\n"
       },
-      "secrets": []
+      "secrets": [],
+      "securityPolicy": true
     },
     {
       "name": "keel",
@@ -171,7 +173,8 @@
         "path": ".github/dependabot.yml",
         "content": "version: 2\nupdates:\n  # Keeps the SHA-pinned actions in .github/workflows current.\n  # PowerShell Gallery tools are pinned in build.ps1 and updated by hand.\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n    groups:\n      actions:\n        patterns: ['*']\n"
       },
-      "secrets": []
+      "secrets": [],
+      "securityPolicy": false
     },
     {
       "name": "jacksonsmith.github.io",
@@ -226,7 +229,8 @@
         "path": ".github/dependabot.yml",
         "content": "version: 2\nupdates:\n  # Keeps the SHA-pinned actions in .github/workflows current.\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n    groups:\n      actions:\n        patterns: ['*']\n"
       },
-      "secrets": []
+      "secrets": [],
+      "securityPolicy": false
     }
   ]
 }
