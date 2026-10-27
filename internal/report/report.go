@@ -158,8 +158,8 @@ func sarifSecuritySeverity(s check.Severity) string {
 }
 
 type sarifDocument struct {
-	Version string    `json:"version"`
-	Schema  string    `json:"$schema"`
+	Version string     `json:"version"`
+	Schema  string     `json:"$schema"`
 	Runs    []sarifRun `json:"runs"`
 }
 
@@ -179,9 +179,9 @@ type sarifDriver struct {
 }
 
 type sarifRule struct {
-	ID               string        `json:"id"`
-	ShortDescription sarifText     `json:"shortDescription"`
-	Help             sarifText     `json:"help"`
+	ID               string         `json:"id"`
+	ShortDescription sarifText      `json:"shortDescription"`
+	Help             sarifText      `json:"help"`
 	Properties       sarifRuleProps `json:"properties"`
 }
 
