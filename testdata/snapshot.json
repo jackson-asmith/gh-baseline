@@ -12,6 +12,7 @@
         "secret_scanning_push_protection": "enabled"
       },
       "vulnReporting": true,
+      "securityPolicy": true,
       "rules": [
         { "type": "deletion" },
         { "type": "non_fast_forward" },
@@ -46,6 +47,7 @@
         "secret_scanning_push_protection": "enabled"
       },
       "vulnReporting": true,
+      "securityPolicy": true,
       "rules": [{ "type": "deletion" }, { "type": "non_fast_forward" }],
       "workflows": []
     }

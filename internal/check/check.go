@@ -215,6 +215,26 @@ var catalog = []Check{
 	securityToggle("security.push-protection", "secret_scanning_push_protection", "push protection",
 		"Enable Push protection under Settings → Advanced Security → Secret Protection."),
 	{
+		ID:          "security.security-policy",
+		Severity:    Low,
+		Remediation: "Add a SECURITY.md to the repository root, .github/, or docs/ describing how to report vulnerabilities.",
+		Run: func(in Input) (Status, string) {
+			if in.Repo.Private {
+				return Skip, "private repository"
+			}
+			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldSecurityPolicy); ok {
+				return st, msg
+			}
+			if in.Repo.SecurityPolicy == nil {
+				return Unknown, "security policy not collected"
+			}
+			if !*in.Repo.SecurityPolicy {
+				return Fail, "no SECURITY.md found"
+			}
+			return Pass, "SECURITY.md exists"
+		},
+	},
+	{
 		ID:          "security.vuln-reporting",
 		Severity:    Low,
 		Remediation: "Enable private vulnerability reporting under Settings → Advanced Security.",

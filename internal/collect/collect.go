@@ -181,6 +181,26 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		r.VulnReporting = &pvr.Enabled
 	}
 
+	// Security policy (SECURITY.md) is a public-facing concern; the community
+	// profile endpoint covers all recognised paths (root, .github/, docs/) but
+	// only applies to public repositories.
+	if !ar.Private {
+		var profile struct {
+			Files struct {
+				Security *struct{} `json:"security"`
+			} `json:"files"`
+		}
+		if _, err := c.API.Get(ctx, base+"/community/profile", &profile); err != nil {
+			if fatal(ctx, err) {
+				return snapshot.Repo{}, err
+			}
+			r.Errors[snapshot.FieldSecurityPolicy] = err.Error()
+		} else {
+			has := profile.Files.Security != nil
+			r.SecurityPolicy = &has
+		}
+	}
+
 	rules, err := c.rules(ctx, base+"/rules/branches/"+url.PathEscape(ar.DefaultBranch))
 	if err != nil {
 		if fatal(ctx, err) {
