@@ -1,0 +1,14 @@
+# GitHub Actions native egress firewall policy (technical preview):
+# https://github.com/github-early-access/actions-native-egress-firewall
+#
+# Applies to every job that runs on a firewall runner (ubuntu-24.04-firewall),
+# read from the same ref as the workflow. Log mode records outbound DNS and
+# HTTP traffic without intentionally blocking it; the run summary and a run
+# artifact list what was contacted. Use that list to build the allow list,
+# then switch to `mode: enforce`.
+#
+# GitHub endpoints allowed by default: github.com, codeload.github.com, and
+# GitHub-managed Actions and storage hosts from the /meta endpoint.
+mode: log
+allow:
+  - api.github.com
