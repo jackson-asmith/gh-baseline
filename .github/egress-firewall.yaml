@@ -1,0 +1,25 @@
+# GitHub Actions native egress firewall policy (technical preview):
+# https://github.com/github-early-access/actions-native-egress-firewall
+#
+# Applies to every job on a firewall runner (ubuntu-24.04-firewall) and is
+# read from the same ref as the workflow. In enforce mode, hosts outside the
+# allow list are denied. GitHub's own endpoints are allowed by default:
+# github.com, codeload.github.com, and the Actions and storage hosts listed
+# by the /meta endpoint.
+#
+# The allow list comes from a log-mode run and was verified both ways (#23):
+# with proxy.golang.org removed, a forced module download failed; with it
+# listed, the download succeeded.
+#
+# - proxy.golang.org: Go modules (gopkg.in/yaml.v3). Usually setup-go
+#   restores them from the Actions cache, so most runs never contact it, but
+#   a cache miss or a go.sum change does.
+#
+# If a step fails with a DNS or connection error such as "server
+# misbehaving", check the firewall-decisions-* run artifact for "BLOCKED"
+# entries (seen so far: "DNS BLOCKED" and "PACKET BLOCKED"); the job log
+# doesn't say the firewall blocked it. Likely future additions: the Go toolchain download
+# host, if go.mod needs a Go version the runner image doesn't have.
+mode: enforce
+allow:
+  - proxy.golang.org
