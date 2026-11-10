@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Security
+- CI runs behind GitHub's native Actions egress firewall (technical preview) in
+  `enforce` mode. Outbound traffic is limited to GitHub's endpoints plus
+  `proxy.golang.org`, the only other host CI contacts. The allow list was built
+  from a log-mode run and tested both ways (#23).
+- Added `SECURITY.md`: report vulnerabilities through GitHub's private
+  vulnerability reporting. gh-baseline now passes its own
+  `security.security-policy` check.
+
+### Documentation
+- Corrected the v0.1.0 release date below (2026-10-13, not 2026-09-30).
+
+## v0.6.0 — 2026-10-27
+
+### Changed
+- Findings carry the repository owner. JSON output gains an `owner` field, and
+  SARIF logical locations use `owner/repo` instead of the bare repository name,
+  so results from different owners don't collide in code scanning (#22).
+
+### Fixes
+- `go.mod` lists `gopkg.in/yaml.v3` as a direct dependency, and `go.sum` gains
+  the missing hash for `gopkg.in/check.v1` (#21).
+
+### Documentation
+- Added this changelog (#20).
+- DESIGN.md's dependency wording matches the README (#21).
+
+### Tests
+- `TestReplaySARIF` checks `--format sarif` end to end, and the collector test
+  asserts the security policy value it collects (#22).
+
 ## v0.5.0 — 2026-10-27
 
 ### Documentation
@@ -56,7 +89,7 @@
 - Added a real-world fixture: a snapshot of five real repositories with findings
   verified by manual audit, used as a regression check in `TestRealWorldFixture`.
 
-## v0.1.0 — 2026-09-30
+## v0.1.0 — 2026-10-13
 
 Initial release. Checks:
 
