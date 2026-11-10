@@ -9,9 +9,6 @@
 #
 # GitHub endpoints allowed by default: github.com, codeload.github.com, and
 # GitHub-managed Actions and storage hosts from the /meta endpoint.
-# TEMPORARY negative test: enforce with proxy.golang.org deliberately
-# missing. If the policy is loaded, `go` can't fetch gopkg.in/yaml.v3 and CI
-# fails. The next commit restores the real allow list.
 mode: enforce
 allow:
-  - api.github.com
+  - proxy.golang.org
