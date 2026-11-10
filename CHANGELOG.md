@@ -11,6 +11,14 @@
   vulnerability reporting. gh-baseline now passes its own
   `security.security-policy` check.
 
+### Fixes
+- `security.security-policy` failed every public repository, even ones with a
+  `SECURITY.md`: it read a `security` entry from the community profile API,
+  which the API doesn't return. It now looks for `SECURITY.md` in the root,
+  `.github/`, and `docs/` directly. The fake API in the tests served the
+  nonexistent field, so the tests passed anyway. The real-world fixture's keel
+  entry is corrected from fail to pass.
+
 ### Documentation
 - Corrected the v0.1.0 release date below (2026-10-13, not 2026-09-30).
 

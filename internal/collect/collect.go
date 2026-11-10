@@ -181,22 +181,18 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		r.VulnReporting = &pvr.Enabled
 	}
 
-	// Security policy (SECURITY.md) is a public-facing concern; the community
-	// profile endpoint covers all recognised paths (root, .github/, docs/) but
-	// only applies to public repositories.
+	// A security policy is for outside reporters, so only public repositories
+	// are checked. The community profile endpoint doesn't report SECURITY.md
+	// (its "files" has no security entry, even for repositories that have
+	// one), so each location GitHub recognises is looked up directly.
 	if !ar.Private {
-		var profile struct {
-			Files struct {
-				Security *struct{} `json:"security"`
-			} `json:"files"`
-		}
-		if _, err := c.API.Get(ctx, base+"/community/profile", &profile); err != nil {
+		has, err := c.securityPolicy(ctx, base)
+		if err != nil {
 			if fatal(ctx, err) {
 				return snapshot.Repo{}, err
 			}
 			r.Errors[snapshot.FieldSecurityPolicy] = err.Error()
 		} else {
-			has := profile.Files.Security != nil
 			r.SecurityPolicy = &has
 		}
 	}
@@ -255,6 +251,24 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		r.Errors = nil
 	}
 	return r, nil
+}
+
+// securityPolicyPaths are where GitHub looks for a security policy.
+var securityPolicyPaths = []string{"SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md"}
+
+// securityPolicy reports whether a SECURITY.md exists in any location GitHub
+// recognises. A 404 means "not here"; any other error is returned.
+func (c *Collector) securityPolicy(ctx context.Context, base string) (bool, error) {
+	for _, p := range securityPolicyPaths {
+		_, err := c.API.Get(ctx, base+"/contents/"+escapePath(p), nil)
+		if err == nil {
+			return true, nil
+		}
+		if !ghapi.IsNotFound(err) {
+			return false, fmt.Errorf("%s: %w", p, err)
+		}
+	}
+	return false, nil
 }
 
 // secrets returns the sorted names of every Actions secret the repository's

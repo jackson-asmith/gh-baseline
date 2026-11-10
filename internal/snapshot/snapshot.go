@@ -35,8 +35,9 @@ type Repo struct {
 	// VulnReporting is private vulnerability reporting; nil if unknown.
 	VulnReporting *bool `json:"vulnReporting,omitempty"`
 
-	// SecurityPolicy is true when a SECURITY.md exists (in any location GitHub
-	// recognises: root, .github/, or docs/). Nil means not collected.
+	// SecurityPolicy is true when a SECURITY.md exists in any location GitHub
+	// recognises (root, .github/, or docs/). Nil means not collected, as for a
+	// private repository.
 	SecurityPolicy *bool `json:"securityPolicy,omitempty"`
 
 	// Rules are the effective rules on the default branch, from every
