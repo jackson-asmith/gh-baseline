@@ -10,9 +10,9 @@ permissions:
 
 jobs:
   test:
-    # Native egress firewall (technical preview): runs the job behind a
-    # firewall that records outbound traffic per .github/egress-firewall.yaml.
-    # Needs contents: read (set above) so the firewall can read that file.
+    # Native egress firewall (technical preview): outbound traffic is limited
+    # to the allow list in .github/egress-firewall.yaml. Needs contents: read
+    # (set above) so the firewall can read that file.
     runs-on: ubuntu-24.04-firewall
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -21,8 +21,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: TEMPORARY firewall test (forces a module download)
-        run: go clean -modcache && go mod download -x
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)
