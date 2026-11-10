@@ -174,7 +174,7 @@
         "content": "version: 2\nupdates:\n  # Keeps the SHA-pinned actions in .github/workflows current.\n  # PowerShell Gallery tools are pinned in build.ps1 and updated by hand.\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n    groups:\n      actions:\n        patterns: ['*']\n"
       },
       "secrets": [],
-      "securityPolicy": false
+      "securityPolicy": true
     },
     {
       "name": "jacksonsmith.github.io",

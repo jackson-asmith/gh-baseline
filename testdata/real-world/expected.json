@@ -50,7 +50,7 @@
       "ruleset.check-source": "pass",
       "security.secret-scanning": "pass",
       "security.push-protection": "pass",
-      "security.security-policy": "fail",
+      "security.security-policy": "pass",
       "security.vuln-reporting": "pass",
       "workflow.token-permissions": "pass",
       "workflow.pinned-actions": "pass",

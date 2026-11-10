@@ -35,7 +35,7 @@ func fakeAPI(t *testing.T) *httptest.Server {
 		"/users/me/repos": "[]",
 		"/repos/me/app":   repo("app", ""),
 		"/repos/me/app/private-vulnerability-reporting":   `{"enabled":true}`,
-		"/repos/me/app/community/profile":                 `{"files":{"security":{"url":"https://api.github.com/repos/me/app/contents/SECURITY.md"}}}`,
+		"/repos/me/app/contents/.github/SECURITY.md":      `{"type":"file","path":".github/SECURITY.md","encoding":"base64","content":"` + b64("# Security\n") + `"}`,
 		"/repos/me/app/rules/branches/main":               `[{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test","integration_id":15368}]}}]`,
 		"/repos/me/app/contents/.github/workflows":        `[{"path":".github/workflows/ci.yml","type":"file"},{"path":".github/workflows/README.md","type":"file"}]`,
 		"/repos/me/app/contents/.github/workflows/ci.yml": `{"encoding":"base64","content":"` + b64("permissions: {}\n") + `"}`,
@@ -337,4 +337,72 @@ func TestCollectClassifiesPlanLimitedRulesets(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCollectSecurityPolicy(t *testing.T) {
+	tests := []struct {
+		name    string
+		found   string // path that exists, or "" for none
+		status  int    // status for every other SECURITY.md path
+		private bool
+		want    *bool
+		wantErr string
+	}{
+		{"in the repository root", "SECURITY.md", http.StatusNotFound, false, ptr(true), ""},
+		{"in .github", ".github/SECURITY.md", http.StatusNotFound, false, ptr(true), ""},
+		{"in docs", "docs/SECURITY.md", http.StatusNotFound, false, ptr(true), ""},
+		{"missing everywhere", "", http.StatusNotFound, false, ptr(false), ""},
+		{"unreadable", "", http.StatusForbidden, false, nil, "SECURITY.md: HTTP 403"},
+		{"private repositories aren't asked", "SECURITY.md", http.StatusNotFound, true, nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var asked []string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/repos/me/app":
+					fmt.Fprintf(w, `{"name":"app","default_branch":"main","private":%t}`, tt.private)
+				case strings.HasSuffix(r.URL.Path, "SECURITY.md"):
+					p := strings.TrimPrefix(r.URL.Path, "/repos/me/app/contents/")
+					asked = append(asked, p)
+					if p == tt.found {
+						fmt.Fprintf(w, `{"type":"file","path":%q}`, p)
+						return
+					}
+					w.WriteHeader(tt.status)
+					fmt.Fprint(w, `{"message":"canned"}`)
+				case r.URL.Path == "/repos/me/app/rules/branches/main":
+					fmt.Fprint(w, `[]`)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+					fmt.Fprint(w, `{"message":"Not Found"}`)
+				}
+			}))
+			defer srv.Close()
+
+			snap, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"app"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := snap.Repos[0]
+			if (r.SecurityPolicy == nil) != (tt.want == nil) || (r.SecurityPolicy != nil && *r.SecurityPolicy != *tt.want) {
+				t.Errorf("securityPolicy = %v, want %v (asked %q)", deref(r.SecurityPolicy), deref(tt.want), asked)
+			}
+			if got := r.Errors[snapshot.FieldSecurityPolicy]; !strings.Contains(got, tt.wantErr) || (tt.wantErr == "" && got != "") {
+				t.Errorf("securityPolicy error = %q, want %q", got, tt.wantErr)
+			}
+			if tt.private && len(asked) != 0 {
+				t.Errorf("a private repository was asked for %q", asked)
+			}
+		})
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func deref(b *bool) any {
+	if b == nil {
+		return nil
+	}
+	return *b
 }
