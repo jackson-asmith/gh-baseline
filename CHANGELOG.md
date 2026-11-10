@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.1 — 2026-11-10
 
 ### Security
 - CI runs behind GitHub's native Actions egress firewall (technical preview) in
