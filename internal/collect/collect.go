@@ -27,6 +27,10 @@ type Options struct {
 // Collector gathers snapshots.
 type Collector struct {
 	API *ghapi.Client
+
+	// accountPolicy caches, per owner, where the account's default
+	// SECURITY.md lives ("" for none), so it's looked up once per run.
+	accountPolicy map[string]string
 }
 
 type apiRepo struct {
@@ -186,7 +190,7 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 	// (its "files" has no security entry, even for repositories that have
 	// one), so each location GitHub recognises is looked up directly.
 	if !ar.Private {
-		has, err := c.securityPolicy(ctx, base)
+		has, source, err := c.securityPolicy(ctx, owner, base)
 		if err != nil {
 			if fatal(ctx, err) {
 				return snapshot.Repo{}, err
@@ -194,6 +198,7 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 			r.Errors[snapshot.FieldSecurityPolicy] = err.Error()
 		} else {
 			r.SecurityPolicy = &has
+			r.SecurityPolicySource = source
 		}
 	}
 
@@ -256,9 +261,26 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 // securityPolicyPaths are where GitHub looks for a security policy.
 var securityPolicyPaths = []string{"SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md"}
 
-// securityPolicy reports whether a SECURITY.md exists in any location GitHub
-// recognises. A 404 means "not here"; any other error is returned.
-func (c *Collector) securityPolicy(ctx context.Context, base string) (bool, error) {
+// securityPolicy reports whether a repository has a security policy, and
+// where it comes from: "" for the repository's own SECURITY.md, or
+// "owner/.github" when GitHub falls back to the account's default. GitHub
+// uses that default for any repository without its own file, provided the
+// account's .github repository is public.
+func (c *Collector) securityPolicy(ctx context.Context, owner, base string) (bool, string, error) {
+	own, err := c.hasSecurityPolicy(ctx, base)
+	if err != nil || own {
+		return own, "", err
+	}
+	source, err := c.accountSecurityPolicy(ctx, owner)
+	if err != nil {
+		return false, "", err
+	}
+	return source != "", source, nil
+}
+
+// hasSecurityPolicy reports whether a SECURITY.md exists in any location
+// GitHub recognises. A 404 means "not here"; any other error is returned.
+func (c *Collector) hasSecurityPolicy(ctx context.Context, base string) (bool, error) {
 	for _, p := range securityPolicyPaths {
 		_, err := c.API.Get(ctx, base+"/contents/"+escapePath(p), nil)
 		if err == nil {
@@ -269,6 +291,41 @@ func (c *Collector) securityPolicy(ctx context.Context, base string) (bool, erro
 		}
 	}
 	return false, nil
+}
+
+// accountSecurityPolicy returns "owner/.github" if the account has a public
+// .github repository containing a SECURITY.md, and "" otherwise. Results are
+// cached per owner; errors aren't, so a transient failure can be retried.
+func (c *Collector) accountSecurityPolicy(ctx context.Context, owner string) (string, error) {
+	key := strings.ToLower(owner)
+	if source, ok := c.accountPolicy[key]; ok {
+		return source, nil
+	}
+	base := fmt.Sprintf("repos/%s/.github", url.PathEscape(owner))
+	source := ""
+	var repo struct {
+		Private bool `json:"private"`
+	}
+	_, err := c.API.Get(ctx, base, &repo)
+	switch {
+	case ghapi.IsNotFound(err):
+		// No .github repository, so no default.
+	case err != nil:
+		return "", fmt.Errorf("%s/.github: %w", owner, err)
+	case !repo.Private: // GitHub only uses defaults from a public .github
+		has, err := c.hasSecurityPolicy(ctx, base)
+		if err != nil {
+			return "", fmt.Errorf("%s/.github: %w", owner, err)
+		}
+		if has {
+			source = owner + "/.github"
+		}
+	}
+	if c.accountPolicy == nil {
+		c.accountPolicy = map[string]string{}
+	}
+	c.accountPolicy[key] = source
+	return source, nil
 }
 
 // secrets returns the sorted names of every Actions secret the repository's

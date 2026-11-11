@@ -206,6 +206,18 @@ func TestEvaluateUnreadableRepoIsUnknown(t *testing.T) {
 	}
 }
 
+func TestSecurityPolicyMessages(t *testing.T) {
+	r := healthy()
+	r.SecurityPolicy = ptr(true)
+	if _, msg := byID(t, "security.security-policy").Run(Input{Repo: r, Tier: ciTier, Now: now}); msg != "SECURITY.md exists" {
+		t.Errorf("own file: message = %q", msg)
+	}
+	r.SecurityPolicySource = "acme/.github"
+	if st, msg := byID(t, "security.security-policy").Run(Input{Repo: r, Tier: ciTier, Now: now}); st != Pass || msg != "SECURITY.md exists (account default from acme/.github)" {
+		t.Errorf("account default: got %s %q", st, msg)
+	}
+}
+
 func TestCountMessages(t *testing.T) {
 	tests := []struct {
 		check  string

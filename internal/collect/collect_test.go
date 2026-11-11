@@ -406,3 +406,76 @@ func deref(b *bool) any {
 	}
 	return *b
 }
+
+func TestCollectAccountDefaultSecurityPolicy(t *testing.T) {
+	tests := []struct {
+		name        string
+		ownPolicy   bool   // app has its own SECURITY.md
+		dotGithub   int    // status for GET /repos/me/.github
+		private     bool   // .github repository visibility
+		defaultPath string // SECURITY.md path in .github, or ""
+		want        *bool
+		wantSource  string
+		wantErr     string
+		wantLookups int // requests for the .github repository itself
+	}{
+		{"account default in the root", false, http.StatusOK, false, "SECURITY.md", ptr(true), "me/.github", "", 1},
+		{"account default in .github/", false, http.StatusOK, false, ".github/SECURITY.md", ptr(true), "me/.github", "", 1},
+		{"private .github isn't used", false, http.StatusOK, true, "SECURITY.md", ptr(false), "", "", 1},
+		{".github without a policy", false, http.StatusOK, false, "", ptr(false), "", "", 1},
+		{"no .github repository", false, http.StatusNotFound, false, "", ptr(false), "", "", 1},
+		{"own file wins without a lookup", true, http.StatusOK, false, "SECURITY.md", ptr(true), "", "", 0},
+		{"unreadable .github", false, http.StatusForbidden, false, "", nil, "", "me/.github: HTTP 403", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lookups := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch p := r.URL.Path; {
+				case p == "/repos/me/app" || p == "/repos/me/lib":
+					fmt.Fprintf(w, `{"name":%q,"default_branch":"main"}`, strings.TrimPrefix(p, "/repos/me/"))
+				case p == "/repos/me/.github":
+					lookups++
+					w.WriteHeader(tt.dotGithub)
+					fmt.Fprintf(w, `{"name":".github","private":%t,"message":"canned"}`, tt.private)
+				case p == "/repos/me/app/contents/SECURITY.md" && tt.ownPolicy:
+					fmt.Fprint(w, `{"type":"file","path":"SECURITY.md"}`)
+				case tt.defaultPath != "" && p == "/repos/me/.github/contents/"+tt.defaultPath:
+					fmt.Fprintf(w, `{"type":"file","path":%q}`, tt.defaultPath)
+				case strings.HasSuffix(p, "/rules/branches/main"):
+					fmt.Fprint(w, `[]`)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+					fmt.Fprint(w, `{"message":"Not Found"}`)
+				}
+			}))
+			defer srv.Close()
+
+			// Two repositories, so the account lookup must be cached; "lib"
+			// never has its own policy.
+			snap, err := newCollector(srv).Collect(context.Background(), Options{Owner: "me", Repos: []string{"app", "lib"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := snap.Repos[0]
+			if (r.SecurityPolicy == nil) != (tt.want == nil) || (r.SecurityPolicy != nil && *r.SecurityPolicy != *tt.want) {
+				t.Errorf("securityPolicy = %v, want %v", deref(r.SecurityPolicy), deref(tt.want))
+			}
+			if r.SecurityPolicySource != tt.wantSource {
+				t.Errorf("securityPolicySource = %q, want %q", r.SecurityPolicySource, tt.wantSource)
+			}
+			if got := r.Errors[snapshot.FieldSecurityPolicy]; !strings.Contains(got, tt.wantErr) || (tt.wantErr == "" && got != "") {
+				t.Errorf("securityPolicy error = %q, want %q", got, tt.wantErr)
+			}
+			want := tt.wantLookups
+			if tt.ownPolicy {
+				want = 1 // lib still needs the default
+			} else if tt.wantErr != "" {
+				want = 2 // errors aren't cached, so lib asks again
+			}
+			if lookups != want {
+				t.Errorf("looked up me/.github %d times, want %d", lookups, want)
+			}
+		})
+	}
+}
