@@ -108,7 +108,7 @@ belongs in `basic`, since requiring a pull request would break it.
 | `security.secret-scanning` | Secret scanning is off (public repos) |
 | `security.push-protection` | Push protection is off (public repos) |
 | `security.vuln-reporting` | Private vulnerability reporting is off (public repos) |
-| `security.security-policy` | No SECURITY.md exists (public repos) |
+| `security.security-policy` | No `SECURITY.md` in the repo (root, `.github/`, `docs/`) or as a default in the account's public `.github` repo (public repos) |
 | `workflow.token-permissions` | A workflow has no top-level `permissions:` |
 | `workflow.pinned-actions` | An action is referenced by tag or branch instead of a commit SHA |
 | `workflow.dependabot-actions` | Workflows exist but Dependabot doesn't keep them updated |

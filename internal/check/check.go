@@ -218,7 +218,7 @@ var catalog = []Check{
 	{
 		ID:          "security.security-policy",
 		Severity:    Low,
-		Remediation: "Add a SECURITY.md to the repository root, .github/, or docs/ describing how to report vulnerabilities.",
+		Remediation: "Add a SECURITY.md describing how to report vulnerabilities, either to the repository (root, .github/, or docs/) or to the account's public .github repository as a default for all its repositories.",
 		Run: func(in Input) (Status, string) {
 			if in.Repo.Private {
 				return Skip, "private repository"
@@ -231,6 +231,9 @@ var catalog = []Check{
 			}
 			if !*in.Repo.SecurityPolicy {
 				return Fail, "no SECURITY.md found"
+			}
+			if src := in.Repo.SecurityPolicySource; src != "" {
+				return Pass, "SECURITY.md exists (account default from " + src + ")"
 			}
 			return Pass, "SECURITY.md exists"
 		},

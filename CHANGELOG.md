@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+- `security.security-policy` now recognises an account-wide default: when a
+  repository has no `SECURITY.md` of its own, GitHub uses one from the owner's
+  public `.github` repository, and the check now does too. It reports where
+  the file came from, for example "SECURITY.md exists (account default from
+  actions/.github)". Repositories such as `actions/checkout` used to fail even
+  though GitHub showed reporters a policy. The `.github` repository is looked
+  up once per owner per run.
+
+### Documentation
+- DESIGN.md's check catalog gains the `security.security-policy` row, which
+  was missing.
+
 ## v0.6.1 — 2026-11-10
 
 ### Security

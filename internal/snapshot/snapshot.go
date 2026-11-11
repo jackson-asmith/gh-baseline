@@ -40,6 +40,10 @@ type Repo struct {
 	// private repository.
 	SecurityPolicy *bool `json:"securityPolicy,omitempty"`
 
+	// SecurityPolicySource is empty when the repository has its own
+	// SECURITY.md, or "owner/.github" when GitHub uses the account's default.
+	SecurityPolicySource string `json:"securityPolicySource,omitempty"`
+
 	// Rules are the effective rules on the default branch, from every
 	// ruleset that applies.
 	Rules []Rule `json:"rules"`
