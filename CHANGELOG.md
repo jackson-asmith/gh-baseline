@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.2 — 2026-11-10
 
 ### Fixes
 - `security.security-policy` now recognises an account-wide default: when a
@@ -9,11 +9,11 @@
   the file came from, for example "SECURITY.md exists (account default from
   actions/.github)". Repositories such as `actions/checkout` used to fail even
   though GitHub showed reporters a policy. The `.github` repository is looked
-  up once per owner per run.
+  up once per owner per run (#27).
 
 ### Documentation
 - DESIGN.md's check catalog gains the `security.security-policy` row, which
-  was missing.
+  was missing (#27).
 
 ## v0.6.1 — 2026-11-10
 
