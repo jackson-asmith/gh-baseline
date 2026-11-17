@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.11.0 — 2026-11-17 (unreleased)
+## v0.11.0 — 2026-11-17
 
 ### Changed
 - **Policy normalization layer (B6)**: the `check` package now defines its own
