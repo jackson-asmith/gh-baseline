@@ -12,7 +12,61 @@ import (
 // CurrentSchemaVersion is the schema version written by this build. Increment
 // it whenever the Snapshot or Repo JSON representation changes in a way that
 // would cause an older evaluator to misread a newer snapshot.
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
+
+// ObservationState is the data-collection outcome for one field.
+type ObservationState string
+
+const (
+	ObservationAvailable   ObservationState = "available"
+	ObservationUnavailable ObservationState = "unavailable" // expected (plan limit, not applicable)
+	ObservationError       ObservationState = "error"       // unexpected (token scope, network)
+)
+
+// ReasonCode is a stable domain concept explaining why an observation is
+// unavailable or errored. Checks may branch on these; they must never parse
+// Message strings to infer meaning.
+type ReasonCode string
+
+const (
+	ReasonPlanUnavailable ReasonCode = "plan_unavailable" // feature needs a paid plan
+	ReasonForbidden       ReasonCode = "forbidden"        // HTTP 403
+	ReasonNotFound        ReasonCode = "not_found"        // HTTP 404
+	ReasonMissingScope    ReasonCode = "missing_scope"    // token lacks required scope
+	ReasonRateLimited     ReasonCode = "rate_limited"     // hit rate limit
+	ReasonNotApplicable   ReasonCode = "not_applicable"   // check doesn't apply to this repo type
+)
+
+// Observation is a three-state collected field: the data was read (Available),
+// couldn't be read for a known reason (Unavailable), or failed unexpectedly (Error).
+type Observation[T any] struct {
+	State      ObservationState `json:"state"`
+	Value      T                `json:"value,omitempty"`
+	ReasonCode ReasonCode       `json:"reasonCode,omitempty"`
+	Message    string           `json:"message,omitempty"`
+}
+
+// FeatureState is the on/off state of a repository security feature.
+type FeatureState string
+
+const (
+	FeatureEnabled  FeatureState = "enabled"
+	FeatureDisabled FeatureState = "disabled"
+)
+
+// PolicyState is the present/absent state of a security policy file.
+type PolicyState string
+
+const (
+	PolicyPresent PolicyState = "present"
+	PolicyAbsent  PolicyState = "absent"
+)
+
+// RepositorySecurity holds the per-feature security_and_analysis observations.
+type RepositorySecurity struct {
+	SecretScanning Observation[FeatureState] `json:"secretScanning"`
+	PushProtection Observation[FeatureState] `json:"pushProtection"`
+}
 
 // Snapshot is everything collected in one run.
 type Snapshot struct {
@@ -23,9 +77,10 @@ type Snapshot struct {
 	Repos         []Repo    `json:"repos"`
 }
 
-// Repo is one repository's collected state. A field that could not be read
-// has an entry in Errors keyed by the field name, and checks that depend on
-// it report "unknown".
+// Repo is one repository's collected state. Fields that could not be read are
+// encoded as Observation values with State set to ObservationError or
+// ObservationUnavailable, with the reason in ReasonCode. The Errors map holds
+// errors for non-observation fields (rules, workflows, secrets, etc.).
 type Repo struct {
 	Name          string    `json:"name"`
 	DefaultBranch string    `json:"defaultBranch"`
@@ -34,17 +89,16 @@ type Repo struct {
 	Archived      bool      `json:"archived"`
 	PushedAt      time.Time `json:"pushedAt"`
 
-	// Security holds security_and_analysis statuses, e.g.
-	// "secret_scanning": "enabled".
-	Security map[string]string `json:"security,omitempty"`
+	// RepoSecurity holds the security_and_analysis feature observations.
+	RepoSecurity RepositorySecurity `json:"repoSecurity"`
 
-	// VulnReporting is private vulnerability reporting; nil if unknown.
-	VulnReporting *bool `json:"vulnReporting,omitempty"`
+	// VulnReporting is the private vulnerability reporting feature state.
+	VulnReporting Observation[FeatureState] `json:"vulnReporting"`
 
-	// SecurityPolicy is true when a SECURITY.md exists in any location GitHub
-	// recognises (root, .github/, or docs/). Nil means not collected, as for a
-	// private repository.
-	SecurityPolicy *bool `json:"securityPolicy,omitempty"`
+	// SecurityPolicy reports whether a SECURITY.md exists in any location
+	// GitHub recognises (root, .github/, or docs/). Unavailable for private
+	// repositories (not applicable: external reporters can't reach them).
+	SecurityPolicy Observation[PolicyState] `json:"securityPolicy"`
 
 	// SecurityPolicySource is empty when the repository has its own
 	// SECURITY.md, or "owner/.github" when GitHub uses the account's default.
@@ -92,14 +146,11 @@ type File struct {
 
 // Field names used as keys in Repo.Errors.
 const (
-	FieldRepo           = "repo" // the repository itself; every check is unknown
-	FieldSecurity       = "security"
-	FieldVulnReporting  = "vulnReporting"
-	FieldRules          = "rules"
-	FieldWorkflows      = "workflows"
-	FieldDependabot     = "dependabot"
-	FieldSecrets        = "secrets"
-	FieldSecurityPolicy = "securityPolicy"
+	FieldRepo       = "repo" // the repository itself; every check is unknown
+	FieldRules      = "rules"
+	FieldWorkflows  = "workflows"
+	FieldDependabot = "dependabot"
+	FieldSecrets    = "secrets"
 )
 
 // HasRule reports whether an effective rule of type t exists.
@@ -130,20 +181,33 @@ func (r Repo) RequiredChecks() ([]RequiredCheck, error) {
 	return out, nil
 }
 
-// Load reads a snapshot from a JSON file. Snapshots with no schemaVersion are
-// treated as version 0 (compatible). Snapshots from a future version that this
-// build cannot interpret are rejected.
+// Load reads a snapshot from a JSON file. Snapshots with no schemaVersion
+// (v0) or schemaVersion 1 are automatically migrated to the current format.
+// Snapshots from a future version that this build cannot interpret are rejected.
 func Load(path string) (*Snapshot, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
+	var header struct {
+		SchemaVersion int `json:"schemaVersion"`
+	}
+	if err := json.Unmarshal(b, &header); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if header.SchemaVersion > CurrentSchemaVersion {
+		return nil, fmt.Errorf("%s: snapshot schema version %d is newer than this build supports (%d); upgrade gh-baseline", path, header.SchemaVersion, CurrentSchemaVersion)
+	}
+	if header.SchemaVersion < CurrentSchemaVersion {
+		var ls legacySnapshot
+		if err := json.Unmarshal(b, &ls); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		return migrateSnapshot(ls), nil
+	}
 	var s Snapshot
 	if err := json.Unmarshal(b, &s); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	if s.SchemaVersion > CurrentSchemaVersion {
-		return nil, fmt.Errorf("%s: snapshot schema version %d is newer than this build supports (%d); upgrade gh-baseline", path, s.SchemaVersion, CurrentSchemaVersion)
 	}
 	return &s, nil
 }
@@ -156,4 +220,118 @@ func (s *Snapshot) Save(path string) error {
 		return err
 	}
 	return os.WriteFile(path, append(b, '\n'), 0o644)
+}
+
+// legacySnapshot and legacyRepo hold the pre-v2 JSON layout for migration.
+type legacySnapshot struct {
+	SchemaVersion int          `json:"schemaVersion"`
+	GeneratedAt   time.Time    `json:"generatedAt"`
+	Host          string       `json:"host"`
+	Owner         string       `json:"owner"`
+	Repos         []legacyRepo `json:"repos"`
+}
+
+type legacyRepo struct {
+	Name                 string            `json:"name"`
+	DefaultBranch        string            `json:"defaultBranch"`
+	Private              bool              `json:"private"`
+	Fork                 bool              `json:"fork"`
+	Archived             bool              `json:"archived"`
+	PushedAt             time.Time         `json:"pushedAt"`
+	Security             map[string]string `json:"security"`
+	VulnReporting        *bool             `json:"vulnReporting"`
+	SecurityPolicy       *bool             `json:"securityPolicy"`
+	SecurityPolicySource string            `json:"securityPolicySource"`
+	Rules                []Rule            `json:"rules"`
+	RulesetsUnavailable  bool              `json:"rulesetsUnavailable"`
+	Workflows            []File            `json:"workflows"`
+	Dependabot           *File             `json:"dependabot"`
+	Secrets              []string          `json:"secrets"`
+	Errors               map[string]string `json:"errors"`
+}
+
+// migrateSnapshot converts a pre-v2 snapshot to the current format.
+func migrateSnapshot(ls legacySnapshot) *Snapshot {
+	s := &Snapshot{
+		SchemaVersion: ls.SchemaVersion,
+		GeneratedAt:   ls.GeneratedAt,
+		Host:          ls.Host,
+		Owner:         ls.Owner,
+	}
+	for _, lr := range ls.Repos {
+		r := Repo{
+			Name:                 lr.Name,
+			DefaultBranch:        lr.DefaultBranch,
+			Private:              lr.Private,
+			Fork:                 lr.Fork,
+			Archived:             lr.Archived,
+			PushedAt:             lr.PushedAt,
+			Rules:                lr.Rules,
+			RulesetsUnavailable:  lr.RulesetsUnavailable,
+			Workflows:            lr.Workflows,
+			Dependabot:           lr.Dependabot,
+			Secrets:              lr.Secrets,
+			SecurityPolicySource: lr.SecurityPolicySource,
+		}
+		for k, v := range lr.Errors {
+			switch k {
+			case "security", "vulnReporting", "securityPolicy":
+				// migrated below
+			default:
+				if r.Errors == nil {
+					r.Errors = map[string]string{}
+				}
+				r.Errors[k] = v
+			}
+		}
+		// Migrate security_and_analysis → RepoSecurity.
+		if errMsg, ok := lr.Errors["security"]; ok {
+			code := ReasonMissingScope
+			if lr.Private {
+				code = ReasonPlanUnavailable
+			}
+			unavail := Observation[FeatureState]{State: ObservationUnavailable, ReasonCode: code, Message: errMsg}
+			r.RepoSecurity = RepositorySecurity{SecretScanning: unavail, PushProtection: unavail}
+		} else {
+			featureObs := func(key string) Observation[FeatureState] {
+				v, ok := lr.Security[key]
+				if !ok {
+					return Observation[FeatureState]{State: ObservationUnavailable, ReasonCode: ReasonPlanUnavailable}
+				}
+				fs := FeatureDisabled
+				if v == "enabled" {
+					fs = FeatureEnabled
+				}
+				return Observation[FeatureState]{State: ObservationAvailable, Value: fs}
+			}
+			r.RepoSecurity = RepositorySecurity{
+				SecretScanning: featureObs("secret_scanning"),
+				PushProtection: featureObs("secret_scanning_push_protection"),
+			}
+		}
+		// Migrate vulnReporting → VulnReporting.
+		if errMsg, ok := lr.Errors["vulnReporting"]; ok {
+			r.VulnReporting = Observation[FeatureState]{State: ObservationError, Message: errMsg}
+		} else if lr.VulnReporting != nil {
+			v := FeatureDisabled
+			if *lr.VulnReporting {
+				v = FeatureEnabled
+			}
+			r.VulnReporting = Observation[FeatureState]{State: ObservationAvailable, Value: v}
+		}
+		// Migrate securityPolicy → SecurityPolicy.
+		if errMsg, ok := lr.Errors["securityPolicy"]; ok {
+			r.SecurityPolicy = Observation[PolicyState]{State: ObservationError, Message: errMsg}
+		} else if lr.Private {
+			r.SecurityPolicy = Observation[PolicyState]{State: ObservationUnavailable, ReasonCode: ReasonNotApplicable}
+		} else if lr.SecurityPolicy != nil {
+			ps := PolicyAbsent
+			if *lr.SecurityPolicy {
+				ps = PolicyPresent
+			}
+			r.SecurityPolicy = Observation[PolicyState]{State: ObservationAvailable, Value: ps}
+		}
+		s.Repos = append(s.Repos, r)
+	}
+	return s
 }

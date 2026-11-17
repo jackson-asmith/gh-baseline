@@ -20,18 +20,31 @@ func TestLoadRejectsNewerSchema(t *testing.T) {
 	}
 }
 
-func TestLoadAcceptsVersion0(t *testing.T) {
-	content := `{"owner":"acme","repos":[]}`
+func TestLoadMigratesVersion0(t *testing.T) {
+	content := `{"owner":"acme","repos":[{"name":"api","defaultBranch":"main","security":{"secret_scanning":"enabled","secret_scanning_push_protection":"enabled"},"vulnReporting":true,"securityPolicy":true,"rules":null,"workflows":[],"secrets":null}]}`
 	p := filepath.Join(t.TempDir(), "snap.json")
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	s, err := snapshot.Load(p)
 	if err != nil {
-		t.Fatalf("Load should accept a snapshot with no schemaVersion: %v", err)
+		t.Fatalf("Load should migrate a v0 snapshot: %v", err)
 	}
 	if s.SchemaVersion != 0 {
-		t.Errorf("schemaVersion = %d, want 0", s.SchemaVersion)
+		t.Errorf("schemaVersion = %d, want 0 (Load preserves the original version)", s.SchemaVersion)
+	}
+	if len(s.Repos) != 1 {
+		t.Fatalf("got %d repos, want 1", len(s.Repos))
+	}
+	r := s.Repos[0]
+	if r.RepoSecurity.SecretScanning.State != snapshot.ObservationAvailable || r.RepoSecurity.SecretScanning.Value != snapshot.FeatureEnabled {
+		t.Errorf("secretScanning = %v, want available/enabled", r.RepoSecurity.SecretScanning)
+	}
+	if r.VulnReporting.State != snapshot.ObservationAvailable || r.VulnReporting.Value != snapshot.FeatureEnabled {
+		t.Errorf("vulnReporting = %v, want available/enabled", r.VulnReporting)
+	}
+	if r.SecurityPolicy.State != snapshot.ObservationAvailable || r.SecurityPolicy.Value != snapshot.PolicyPresent {
+		t.Errorf("securityPolicy = %v, want available/present", r.SecurityPolicy)
 	}
 }
 

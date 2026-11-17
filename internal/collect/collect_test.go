@@ -82,13 +82,13 @@ func TestCollectListsAndFilters(t *testing.T) {
 	}
 
 	r := snap.Repos[0]
-	if r.Security["secret_scanning"] != "enabled" {
-		t.Errorf("security = %v", r.Security)
+	if r.RepoSecurity.SecretScanning.State != snapshot.ObservationAvailable || r.RepoSecurity.SecretScanning.Value != snapshot.FeatureEnabled {
+		t.Errorf("repoSecurity.secretScanning = %v", r.RepoSecurity.SecretScanning)
 	}
-	if r.VulnReporting == nil || !*r.VulnReporting {
+	if r.VulnReporting.State != snapshot.ObservationAvailable || r.VulnReporting.Value != snapshot.FeatureEnabled {
 		t.Errorf("vulnReporting = %v", r.VulnReporting)
 	}
-	if r.SecurityPolicy == nil || !*r.SecurityPolicy {
+	if r.SecurityPolicy.State != snapshot.ObservationAvailable || r.SecurityPolicy.Value != snapshot.PolicyPresent {
 		t.Errorf("securityPolicy = %v", r.SecurityPolicy)
 	}
 	checks, err := r.RequiredChecks()
@@ -182,8 +182,8 @@ func TestCollectRecordsUnreadableFields(t *testing.T) {
 		t.Fatalf("exclude is case-insensitive: got %d repos", len(snap.Repos))
 	}
 	r := snap.Repos[0]
-	if !strings.Contains(r.Errors[snapshot.FieldVulnReporting], "403") {
-		t.Errorf("want a recorded 403, got errors %v", r.Errors)
+	if r.VulnReporting.State != snapshot.ObservationError || !strings.Contains(r.VulnReporting.Message, "403") {
+		t.Errorf("want a 403 in VulnReporting, got %v / errors %v", r.VulnReporting, r.Errors)
 	}
 	if len(r.Workflows) != 0 || r.Errors[snapshot.FieldWorkflows] != "" {
 		t.Errorf("a missing workflows dir means no workflows, not an error: %+v %v", r.Workflows, r.Errors)
@@ -341,19 +341,20 @@ func TestCollectClassifiesPlanLimitedRulesets(t *testing.T) {
 
 func TestCollectSecurityPolicy(t *testing.T) {
 	tests := []struct {
-		name    string
-		found   string // path that exists, or "" for none
-		status  int    // status for every other SECURITY.md path
-		private bool
-		want    *bool
-		wantErr string
+		name      string
+		found     string // path that exists, or "" for none
+		status    int    // status for every other SECURITY.md path
+		private   bool
+		wantState snapshot.ObservationState
+		wantValue snapshot.PolicyState
+		wantErr   string // substring expected in SecurityPolicy.Message, or "" for none
 	}{
-		{"in the repository root", "SECURITY.md", http.StatusNotFound, false, ptr(true), ""},
-		{"in .github", ".github/SECURITY.md", http.StatusNotFound, false, ptr(true), ""},
-		{"in docs", "docs/SECURITY.md", http.StatusNotFound, false, ptr(true), ""},
-		{"missing everywhere", "", http.StatusNotFound, false, ptr(false), ""},
-		{"unreadable", "", http.StatusForbidden, false, nil, "SECURITY.md: HTTP 403"},
-		{"private repositories aren't asked", "SECURITY.md", http.StatusNotFound, true, nil, ""},
+		{"in the repository root", "SECURITY.md", http.StatusNotFound, false, snapshot.ObservationAvailable, snapshot.PolicyPresent, ""},
+		{"in .github", ".github/SECURITY.md", http.StatusNotFound, false, snapshot.ObservationAvailable, snapshot.PolicyPresent, ""},
+		{"in docs", "docs/SECURITY.md", http.StatusNotFound, false, snapshot.ObservationAvailable, snapshot.PolicyPresent, ""},
+		{"missing everywhere", "", http.StatusNotFound, false, snapshot.ObservationAvailable, snapshot.PolicyAbsent, ""},
+		{"unreadable", "", http.StatusForbidden, false, snapshot.ObservationError, "", "SECURITY.md: HTTP 403"},
+		{"private repositories aren't asked", "SECURITY.md", http.StatusNotFound, true, snapshot.ObservationUnavailable, "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -385,11 +386,14 @@ func TestCollectSecurityPolicy(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := snap.Repos[0]
-			if (r.SecurityPolicy == nil) != (tt.want == nil) || (r.SecurityPolicy != nil && *r.SecurityPolicy != *tt.want) {
-				t.Errorf("securityPolicy = %v, want %v (asked %q)", deref(r.SecurityPolicy), deref(tt.want), asked)
+			if r.SecurityPolicy.State != tt.wantState {
+				t.Errorf("securityPolicy.state = %q, want %q (asked %q)", r.SecurityPolicy.State, tt.wantState, asked)
 			}
-			if got := r.Errors[snapshot.FieldSecurityPolicy]; !strings.Contains(got, tt.wantErr) || (tt.wantErr == "" && got != "") {
-				t.Errorf("securityPolicy error = %q, want %q", got, tt.wantErr)
+			if tt.wantValue != "" && r.SecurityPolicy.Value != tt.wantValue {
+				t.Errorf("securityPolicy.value = %q, want %q", r.SecurityPolicy.Value, tt.wantValue)
+			}
+			if tt.wantErr != "" && !strings.Contains(r.SecurityPolicy.Message, tt.wantErr) {
+				t.Errorf("securityPolicy.message = %q, want it to contain %q", r.SecurityPolicy.Message, tt.wantErr)
 			}
 			if tt.private && len(asked) != 0 {
 				t.Errorf("a private repository was asked for %q", asked)
@@ -400,13 +404,6 @@ func TestCollectSecurityPolicy(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
-func deref(b *bool) any {
-	if b == nil {
-		return nil
-	}
-	return *b
-}
-
 func TestCollectAccountDefaultSecurityPolicy(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -414,18 +411,19 @@ func TestCollectAccountDefaultSecurityPolicy(t *testing.T) {
 		dotGithub   int    // status for GET /repos/me/.github
 		private     bool   // .github repository visibility
 		defaultPath string // SECURITY.md path in .github, or ""
-		want        *bool
+		wantState   snapshot.ObservationState
+		wantValue   snapshot.PolicyState
 		wantSource  string
 		wantErr     string
 		wantLookups int // requests for the .github repository itself
 	}{
-		{"account default in the root", false, http.StatusOK, false, "SECURITY.md", ptr(true), "me/.github", "", 1},
-		{"account default in .github/", false, http.StatusOK, false, ".github/SECURITY.md", ptr(true), "me/.github", "", 1},
-		{"private .github isn't used", false, http.StatusOK, true, "SECURITY.md", ptr(false), "", "", 1},
-		{".github without a policy", false, http.StatusOK, false, "", ptr(false), "", "", 1},
-		{"no .github repository", false, http.StatusNotFound, false, "", ptr(false), "", "", 1},
-		{"own file wins without a lookup", true, http.StatusOK, false, "SECURITY.md", ptr(true), "", "", 0},
-		{"unreadable .github", false, http.StatusForbidden, false, "", nil, "", "me/.github: HTTP 403", 1},
+		{"account default in the root", false, http.StatusOK, false, "SECURITY.md", snapshot.ObservationAvailable, snapshot.PolicyPresent, "me/.github", "", 1},
+		{"account default in .github/", false, http.StatusOK, false, ".github/SECURITY.md", snapshot.ObservationAvailable, snapshot.PolicyPresent, "me/.github", "", 1},
+		{"private .github isn't used", false, http.StatusOK, true, "SECURITY.md", snapshot.ObservationAvailable, snapshot.PolicyAbsent, "", "", 1},
+		{".github without a policy", false, http.StatusOK, false, "", snapshot.ObservationAvailable, snapshot.PolicyAbsent, "", "", 1},
+		{"no .github repository", false, http.StatusNotFound, false, "", snapshot.ObservationAvailable, snapshot.PolicyAbsent, "", "", 1},
+		{"own file wins without a lookup", true, http.StatusOK, false, "SECURITY.md", snapshot.ObservationAvailable, snapshot.PolicyPresent, "", "", 0},
+		{"unreadable .github", false, http.StatusForbidden, false, "", snapshot.ObservationError, "", "", "me/.github: HTTP 403", 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -458,14 +456,17 @@ func TestCollectAccountDefaultSecurityPolicy(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := snap.Repos[0]
-			if (r.SecurityPolicy == nil) != (tt.want == nil) || (r.SecurityPolicy != nil && *r.SecurityPolicy != *tt.want) {
-				t.Errorf("securityPolicy = %v, want %v", deref(r.SecurityPolicy), deref(tt.want))
+			if r.SecurityPolicy.State != tt.wantState {
+				t.Errorf("securityPolicy.state = %q, want %q", r.SecurityPolicy.State, tt.wantState)
+			}
+			if tt.wantValue != "" && r.SecurityPolicy.Value != tt.wantValue {
+				t.Errorf("securityPolicy.value = %q, want %q", r.SecurityPolicy.Value, tt.wantValue)
 			}
 			if r.SecurityPolicySource != tt.wantSource {
 				t.Errorf("securityPolicySource = %q, want %q", r.SecurityPolicySource, tt.wantSource)
 			}
-			if got := r.Errors[snapshot.FieldSecurityPolicy]; !strings.Contains(got, tt.wantErr) || (tt.wantErr == "" && got != "") {
-				t.Errorf("securityPolicy error = %q, want %q", got, tt.wantErr)
+			if tt.wantErr != "" && !strings.Contains(r.SecurityPolicy.Message, tt.wantErr) {
+				t.Errorf("securityPolicy.message = %q, want it to contain %q", r.SecurityPolicy.Message, tt.wantErr)
 			}
 			want := tt.wantLookups
 			if tt.ownPolicy {
