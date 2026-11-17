@@ -107,3 +107,111 @@ run: echo ${{ github.ref }} ${{ inputs.x || secrets.FALLBACK }}
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+func TestSecretsUsedBracketNotation(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{
+			"single quotes",
+			"run: echo ${{ secrets['DEPLOY_KEY'] }}",
+			[]string{"DEPLOY_KEY"},
+		},
+		{
+			"double quotes",
+			"run: echo ${{ secrets[\"API_TOKEN\"] }}",
+			[]string{"API_TOKEN"},
+		},
+		{
+			"mixed dot and bracket",
+			"run: echo ${{ secrets.FOO }} ${{ secrets['BAR'] }}",
+			[]string{"FOO", "BAR"},
+		},
+		{
+			"deduplicates across notations",
+			"run: echo ${{ secrets.KEY }} ${{ secrets['KEY'] }}",
+			[]string{"KEY"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := secretsUsed(tt.content); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSecretsInherit(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			"job with secrets: inherit",
+			"jobs:\n  call:\n    uses: ./.github/workflows/shared.yml\n    secrets: inherit\n",
+			true,
+		},
+		{
+			"explicit secrets map, not inherit",
+			"jobs:\n  call:\n    uses: ./.github/workflows/shared.yml\n    secrets:\n      MY_SECRET: ${{ secrets.MY_SECRET }}\n",
+			false,
+		},
+		{
+			"no secrets field",
+			"jobs:\n  build:\n    steps:\n      - run: echo hello\n",
+			false,
+		},
+		{
+			"comment mentioning inherit is not a match",
+			"# secrets: inherit\njobs:\n  build:\n    steps:\n      - run: echo hello\n",
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := secretsInherit(tt.content); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDependabotCoversActions(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			"covers github-actions",
+			"version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n",
+			true,
+		},
+		{
+			"covers npm only",
+			"version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n",
+			false,
+		},
+		{
+			"comment mentioning github-actions is not a match",
+			"version: 2\nupdates:\n  # package-ecosystem: github-actions\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n",
+			false,
+		},
+		{
+			"covers both npm and github-actions",
+			"version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly\n",
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dependabotCoversActions(tt.content); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

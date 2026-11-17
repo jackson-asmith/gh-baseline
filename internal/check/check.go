@@ -315,7 +315,7 @@ var catalog = []Check{
 			if in.Repo.Dependabot == nil {
 				return Fail, "no dependabot.yml"
 			}
-			if !dependabotActions.MatchString(in.Repo.Dependabot.Content) {
+			if !dependabotCoversActions(in.Repo.Dependabot.Content) {
 				return Fail, "dependabot.yml doesn't cover github-actions"
 			}
 			return Pass, "Dependabot updates actions"
@@ -343,21 +343,31 @@ var catalog = []Check{
 				return Pass, "last push " + count(days, "day", "days") + " ago"
 			}
 			var names []string
+			var inherits bool
 			for _, w := range in.Repo.Workflows {
 				names = append(names, secretsUsed(w.Content)...)
-			}
-			if len(names) == 0 {
-				return Pass, fmt.Sprintf("stale (%s) but workflows use no secrets", count(days, "day", "days"))
+				if secretsInherit(w.Content) {
+					inherits = true
+				}
 			}
 			slices.Sort(names)
 			names = slices.Compact(names)
-			used := strings.Join(names, ", ")
+			if len(names) == 0 && !inherits {
+				return Pass, fmt.Sprintf("stale (%s) but workflows use no secrets", count(days, "day", "days"))
+			}
 			if e, ok := in.Repo.Errors[snapshot.FieldSecrets]; ok {
-				return Unknown, fmt.Sprintf("no push in %s; workflows use %s; couldn't read which secrets exist: %s", count(days, "day", "days"), used, e)
+				return Unknown, fmt.Sprintf("no push in %s; workflows use secrets; couldn't read which secrets exist: %s", count(days, "day", "days"), e)
 			}
 			if in.Repo.Secrets == nil {
-				return Unknown, fmt.Sprintf("no push in %s; workflows use %s; the snapshot doesn't record which secrets exist", count(days, "day", "days"), used)
+				return Unknown, fmt.Sprintf("no push in %s; workflows use secrets; the snapshot doesn't record which secrets exist", count(days, "day", "days"))
 			}
+			if inherits && len(in.Repo.Secrets) > 0 {
+				return Fail, fmt.Sprintf("no push in %s; a workflow uses secrets: inherit and %s still exist — audit the callee", count(days, "day", "days"), count(len(in.Repo.Secrets), "secret", "secrets"))
+			}
+			if len(names) == 0 {
+				return Pass, fmt.Sprintf("stale (%s); a workflow uses secrets: inherit but no secrets exist", count(days, "day", "days"))
+			}
+			used := strings.Join(names, ", ")
 			var live []string
 			for _, n := range names {
 				// Secret names are case-insensitive; GitHub stores them in upper case.
