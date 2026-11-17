@@ -211,9 +211,17 @@ var catalog = []Check{
 			return Pass, pinnedMessage(len(checks))
 		},
 	},
-	securityToggle("security.secret-scanning", "secret_scanning", "secret scanning",
+	securityToggle("security.secret-scanning",
+		func(s snapshot.RepositorySecurity) snapshot.Observation[snapshot.FeatureState] {
+			return s.SecretScanning
+		},
+		"secret scanning",
 		"Enable Secret Protection under Settings → Advanced Security."),
-	securityToggle("security.push-protection", "secret_scanning_push_protection", "push protection",
+	securityToggle("security.push-protection",
+		func(s snapshot.RepositorySecurity) snapshot.Observation[snapshot.FeatureState] {
+			return s.PushProtection
+		},
+		"push protection",
 		"Enable Push protection under Settings → Advanced Security → Secret Protection."),
 	{
 		ID:          "security.security-policy",
@@ -223,19 +231,20 @@ var catalog = []Check{
 			if in.Repo.Private {
 				return Skip, "private repository"
 			}
-			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldSecurityPolicy); ok {
-				return st, msg
-			}
-			if in.Repo.SecurityPolicy == nil {
+			switch o := in.Repo.SecurityPolicy; o.State {
+			case snapshot.ObservationAvailable:
+				if o.Value == snapshot.PolicyAbsent {
+					return Fail, "no SECURITY.md found"
+				}
+				if src := in.Repo.SecurityPolicySource; src != "" {
+					return Pass, "SECURITY.md exists (account default from " + src + ")"
+				}
+				return Pass, "SECURITY.md exists"
+			case snapshot.ObservationError:
+				return Unknown, "couldn't read securityPolicy: " + o.Message
+			default:
 				return Unknown, "security policy not collected"
 			}
-			if !*in.Repo.SecurityPolicy {
-				return Fail, "no SECURITY.md found"
-			}
-			if src := in.Repo.SecurityPolicySource; src != "" {
-				return Pass, "SECURITY.md exists (account default from " + src + ")"
-			}
-			return Pass, "SECURITY.md exists"
 		},
 	},
 	{
@@ -246,13 +255,17 @@ var catalog = []Check{
 			if in.Repo.Private {
 				return Skip, "private repository"
 			}
-			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldVulnReporting); ok {
-				return st, msg
-			}
-			if in.Repo.VulnReporting == nil || !*in.Repo.VulnReporting {
+			switch o := in.Repo.VulnReporting; o.State {
+			case snapshot.ObservationAvailable:
+				if o.Value == snapshot.FeatureEnabled {
+					return Pass, "private vulnerability reporting is on"
+				}
 				return Fail, "private vulnerability reporting is off"
+			case snapshot.ObservationError:
+				return Unknown, "couldn't read vulnReporting: " + o.Message
+			default:
+				return Unknown, "private vulnerability reporting status unknown"
 			}
-			return Pass, "private vulnerability reporting is on"
 		},
 	},
 	{
@@ -407,31 +420,29 @@ func pinnedMessage(n int) string {
 	return fmt.Sprintf("all %d required checks are pinned to a source", n)
 }
 
-func securityToggle(id, key, label, remediation string) Check {
+func securityToggle(
+	id string,
+	field func(snapshot.RepositorySecurity) snapshot.Observation[snapshot.FeatureState],
+	label, remediation string,
+) Check {
 	return Check{
 		ID:          id,
 		Severity:    High,
 		Remediation: remediation,
 		Run: func(in Input) (Status, string) {
-			if _, ok := in.Repo.Errors[snapshot.FieldSecurity]; ok {
-				// security_and_analysis wasn't returned at all. For private repos
-				// this is expected on free plans; for public repos it's unexpected.
+			switch o := field(in.Repo.RepoSecurity); o.State {
+			case snapshot.ObservationAvailable:
+				if o.Value == snapshot.FeatureEnabled {
+					return Pass, label + " is on"
+				}
+				return Fail, label + " is off"
+			case snapshot.ObservationUnavailable:
 				if in.Repo.Private {
 					return Skip, "private repository (feature may require a paid plan)"
 				}
-				return Unknown, "couldn't read security_and_analysis"
-			}
-			switch in.Repo.Security[key] {
-			case "enabled":
-				return Pass, label + " is on"
-			case "":
-				// security_and_analysis was returned but this feature key is absent.
-				if in.Repo.Private {
-					return Skip, "private repository (feature requires a paid plan)"
-				}
 				return Unknown, label + " status not returned"
 			default:
-				return Fail, label + " is off"
+				return Unknown, "couldn't read security_and_analysis"
 			}
 		},
 	}

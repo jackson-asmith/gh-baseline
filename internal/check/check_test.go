@@ -47,16 +47,19 @@ func ptr[T any](v T) *T { return &v }
 
 // healthy is a public repo that passes every check in the "ci" tier.
 func healthy() snapshot.Repo {
+	avail := func(v snapshot.FeatureState) snapshot.Observation[snapshot.FeatureState] {
+		return snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: v}
+	}
 	return snapshot.Repo{
 		Name:          "good",
 		DefaultBranch: "main",
 		PushedAt:      now.AddDate(0, 0, -3),
-		Security: map[string]string{
-			"secret_scanning":                 "enabled",
-			"secret_scanning_push_protection": "enabled",
+		RepoSecurity: snapshot.RepositorySecurity{
+			SecretScanning: avail(snapshot.FeatureEnabled),
+			PushProtection: avail(snapshot.FeatureEnabled),
 		},
-		VulnReporting:  ptr(true),
-		SecurityPolicy: ptr(true),
+		VulnReporting:  snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: snapshot.FeatureEnabled},
+		SecurityPolicy: snapshot.Observation[snapshot.PolicyState]{State: snapshot.ObservationAvailable, Value: snapshot.PolicyPresent},
 		Rules: []snapshot.Rule{
 			rule("deletion", nil),
 			rule("non_fast_forward", nil),
@@ -126,31 +129,41 @@ func TestChecks(t *testing.T) {
 		{"ruleset.check-source", "any source accepted", func(r *snapshot.Repo) { r.Rules[3] = checksRule(ptr(int64(15368)), nil) }, ciTier, Fail, "jobB"},
 		{"ruleset.check-source", "no required checks", func(r *snapshot.Repo) { r.Rules = r.Rules[:3] }, ciTier, Skip, ""},
 
-		{"security.secret-scanning", "off", func(r *snapshot.Repo) { r.Security["secret_scanning"] = "disabled" }, ciTier, Fail, "off"},
+		{"security.secret-scanning", "off", func(r *snapshot.Repo) {
+			r.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: snapshot.FeatureDisabled}
+		}, ciTier, Fail, "off"},
 		{"security.secret-scanning", "private repo, security_and_analysis not returned", func(r *snapshot.Repo) {
 			r.Private = true
-			r.Security = nil
-			r.Errors = map[string]string{"security": "security_and_analysis not returned"}
+			r.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationUnavailable, ReasonCode: snapshot.ReasonPlanUnavailable}
 		}, ciTier, Skip, "private"},
 		{"security.secret-scanning", "private repo, security_and_analysis returned and enabled", func(r *snapshot.Repo) {
 			r.Private = true
 		}, ciTier, Pass, "on"},
 		{"security.secret-scanning", "private repo, feature key absent", func(r *snapshot.Repo) {
 			r.Private = true
-			delete(r.Security, "secret_scanning")
+			r.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationUnavailable, ReasonCode: snapshot.ReasonPlanUnavailable}
 		}, ciTier, Skip, "paid plan"},
-		{"security.secret-scanning", "settings unreadable", func(r *snapshot.Repo) { r.Security = nil; r.Errors = map[string]string{"security": "x"} }, ciTier, Unknown, ""},
-		{"security.push-protection", "status not returned", func(r *snapshot.Repo) { delete(r.Security, "secret_scanning_push_protection") }, ciTier, Unknown, "not returned"},
+		{"security.secret-scanning", "settings unreadable", func(r *snapshot.Repo) {
+			r.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationError, Message: "x"}
+		}, ciTier, Unknown, ""},
+		{"security.push-protection", "status not returned", func(r *snapshot.Repo) {
+			r.RepoSecurity.PushProtection = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationUnavailable}
+		}, ciTier, Unknown, "not returned"},
 
-		{"security.security-policy", "missing", func(r *snapshot.Repo) { r.SecurityPolicy = ptr(false) }, ciTier, Fail, "no SECURITY.md"},
+		{"security.security-policy", "missing", func(r *snapshot.Repo) {
+			r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{State: snapshot.ObservationAvailable, Value: snapshot.PolicyAbsent}
+		}, ciTier, Fail, "no SECURITY.md"},
 		{"security.security-policy", "private repo", func(r *snapshot.Repo) { r.Private = true }, ciTier, Skip, "private"},
-		{"security.security-policy", "not collected", func(r *snapshot.Repo) { r.SecurityPolicy = nil }, ciTier, Unknown, "not collected"},
+		{"security.security-policy", "not collected", func(r *snapshot.Repo) {
+			r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{}
+		}, ciTier, Unknown, "not collected"},
 		{"security.security-policy", "api error", func(r *snapshot.Repo) {
-			r.SecurityPolicy = nil
-			r.Errors = map[string]string{"securityPolicy": "HTTP 403"}
+			r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{State: snapshot.ObservationError, Message: "HTTP 403"}
 		}, ciTier, Unknown, "HTTP 403"},
 
-		{"security.vuln-reporting", "off", func(r *snapshot.Repo) { r.VulnReporting = ptr(false) }, ciTier, Fail, "off"},
+		{"security.vuln-reporting", "off", func(r *snapshot.Repo) {
+			r.VulnReporting = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: snapshot.FeatureDisabled}
+		}, ciTier, Fail, "off"},
 
 		{"workflow.token-permissions", "no top-level permissions", func(r *snapshot.Repo) { r.Workflows[0].Content = "jobs: {}\n" }, ciTier, Fail, "ci.yml"},
 		{"workflow.token-permissions", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciTier, Skip, ""},
@@ -219,7 +232,7 @@ func TestEvaluateUnreadableRepoIsUnknown(t *testing.T) {
 
 func TestSecurityPolicyMessages(t *testing.T) {
 	r := healthy()
-	r.SecurityPolicy = ptr(true)
+	r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{State: snapshot.ObservationAvailable, Value: snapshot.PolicyPresent}
 	if _, msg := byID(t, "security.security-policy").Run(Input{Repo: r, Tier: ciTier, Now: now}); msg != "SECURITY.md exists" {
 		t.Errorf("own file: message = %q", msg)
 	}
@@ -281,7 +294,7 @@ func TestEvaluateUsesTierAndAddsRemediation(t *testing.T) {
 		}
 	}
 
-	bare.Security["secret_scanning"] = "disabled"
+	bare.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: snapshot.FeatureDisabled}
 	fs = Evaluate(&snapshot.Snapshot{Repos: []snapshot.Repo{bare}}, b, now)
 	for _, f := range fs {
 		if f.Check == "security.secret-scanning" && (f.Status != Fail || f.Remediation == "") {

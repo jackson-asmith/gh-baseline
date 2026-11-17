@@ -165,12 +165,18 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		Errors:        map[string]string{},
 	}
 	if ar.Security != nil {
-		r.Security = map[string]string{}
-		for k, v := range ar.Security {
-			r.Security[k] = v.Status
-		}
+		r.RepoSecurity = securityFromAPI(ar.Security)
 	} else {
-		r.Errors[snapshot.FieldSecurity] = "security_and_analysis not returned (token may lack admin access)"
+		code := snapshot.ReasonMissingScope
+		if ar.Private {
+			code = snapshot.ReasonPlanUnavailable
+		}
+		unavail := snapshot.Observation[snapshot.FeatureState]{
+			State:      snapshot.ObservationUnavailable,
+			ReasonCode: code,
+			Message:    "security_and_analysis not returned",
+		}
+		r.RepoSecurity = snapshot.RepositorySecurity{SecretScanning: unavail, PushProtection: unavail}
 	}
 
 	var pvr struct {
@@ -180,9 +186,17 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		if fatal(ctx, err) {
 			return snapshot.Repo{}, err
 		}
-		r.Errors[snapshot.FieldVulnReporting] = err.Error()
+		r.VulnReporting = snapshot.Observation[snapshot.FeatureState]{
+			State:      snapshot.ObservationError,
+			ReasonCode: reasonCodeFromErr(err),
+			Message:    err.Error(),
+		}
 	} else {
-		r.VulnReporting = &pvr.Enabled
+		v := snapshot.FeatureDisabled
+		if pvr.Enabled {
+			v = snapshot.FeatureEnabled
+		}
+		r.VulnReporting = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: v}
 	}
 
 	// A security policy is for outside reporters, so only public repositories
@@ -195,10 +209,23 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 			if fatal(ctx, err) {
 				return snapshot.Repo{}, err
 			}
-			r.Errors[snapshot.FieldSecurityPolicy] = err.Error()
+			r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{
+				State:      snapshot.ObservationError,
+				ReasonCode: reasonCodeFromErr(err),
+				Message:    err.Error(),
+			}
 		} else {
-			r.SecurityPolicy = &has
+			ps := snapshot.PolicyAbsent
+			if has {
+				ps = snapshot.PolicyPresent
+			}
+			r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{State: snapshot.ObservationAvailable, Value: ps}
 			r.SecurityPolicySource = source
+		}
+	} else {
+		r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{
+			State:      snapshot.ObservationUnavailable,
+			ReasonCode: snapshot.ReasonNotApplicable,
 		}
 	}
 
@@ -256,6 +283,45 @@ func (c *Collector) repo(ctx context.Context, owner, name string) (snapshot.Repo
 		r.Errors = nil
 	}
 	return r, nil
+}
+
+// securityFromAPI converts the security_and_analysis API map to typed observations.
+func securityFromAPI(api map[string]struct {
+	Status string `json:"status"`
+}) snapshot.RepositorySecurity {
+	obs := func(key string) snapshot.Observation[snapshot.FeatureState] {
+		v, ok := api[key]
+		if !ok {
+			return snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationUnavailable, ReasonCode: snapshot.ReasonPlanUnavailable}
+		}
+		fs := snapshot.FeatureDisabled
+		if v.Status == "enabled" {
+			fs = snapshot.FeatureEnabled
+		}
+		return snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: fs}
+	}
+	return snapshot.RepositorySecurity{
+		SecretScanning: obs("secret_scanning"),
+		PushProtection: obs("secret_scanning_push_protection"),
+	}
+}
+
+// reasonCodeFromErr maps a ghapi error to a ReasonCode.
+func reasonCodeFromErr(err error) snapshot.ReasonCode {
+	var se *ghapi.StatusError
+	if !errors.As(err, &se) {
+		return ""
+	}
+	switch se.Status {
+	case http.StatusForbidden:
+		return snapshot.ReasonForbidden
+	case http.StatusNotFound:
+		return snapshot.ReasonNotFound
+	case http.StatusTooManyRequests:
+		return snapshot.ReasonRateLimited
+	default:
+		return ""
+	}
 }
 
 // securityPolicyPaths are where GitHub looks for a security policy.
