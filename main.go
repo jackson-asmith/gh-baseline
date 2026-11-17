@@ -47,15 +47,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gh-baseline", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var (
-		baselinePath = flags.String("baseline", "", "baseline file (JSON); default: every repo in the basic tier")
-		owner        = flags.String("owner", "", "account to audit (overrides the baseline's owner)")
-		hostname     = flags.String("hostname", "", "GitHub host (default: GH_HOST or github.com)")
-		snapIn       = flags.String("snapshot", "", "evaluate a saved snapshot instead of calling the API")
-		snapOut      = flags.String("save-snapshot", "", "write the collected snapshot to this file")
-		format         = flags.String("format", "table", "output format: table, json, or sarif")
-		all            = flags.Bool("all", false, "show passing and skipped checks too (table format)")
-		failOnUnknown  = flags.Bool("fail-on-unknown", false, "exit 1 when any check is unknown (recommended for scheduled audits)")
-		repos          listFlag
+		baselinePath  = flags.String("baseline", "", "baseline file (JSON); default: every repo in the basic tier")
+		owner         = flags.String("owner", "", "account to audit (overrides the baseline's owner)")
+		hostname      = flags.String("hostname", "", "GitHub host (default: GH_HOST or github.com)")
+		snapIn        = flags.String("snapshot", "", "evaluate a saved snapshot instead of calling the API")
+		snapOut       = flags.String("save-snapshot", "", "write the collected snapshot to this file")
+		format        = flags.String("format", "table", "output format: table, json, or sarif")
+		all           = flags.Bool("all", false, "show passing and skipped checks too (table format)")
+		failOnUnknown = flags.Bool("fail-on-unknown", false, "exit 1 when any check is unknown (recommended for scheduled audits)")
+		repos         listFlag
 	)
 	flags.Var(&repos, "repo", "repository to audit (repeatable); default: all of the owner's repos")
 	flags.Usage = func() {
