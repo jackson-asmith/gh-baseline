@@ -55,6 +55,9 @@ gh baseline --baseline baseline.json --repo api --repo website
 gh baseline --baseline baseline.json --save-snapshot run.snapshot.json
 gh baseline --baseline baseline.json --snapshot run.snapshot.json
 
+# Reject a snapshot that is more than 24 hours old (prevents accidental stale audits)
+gh baseline --baseline baseline.json --snapshot run.snapshot.json --max-snapshot-age 24h
+
 # Everything, including passes, as JSON
 gh baseline --baseline baseline.json --format json
 ```

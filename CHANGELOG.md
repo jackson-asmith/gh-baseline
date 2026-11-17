@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.0 — 2026-11-17
+
+### New features
+- **`--max-snapshot-age`**: accepts a Go duration (e.g. `24h`) and rejects
+  saved snapshots older than that limit with exit `2`. Prevents an operator
+  from accidentally treating a week-old snapshot as a current security audit.
+  The flag is opt-in and has no effect when omitted.
+- **Snapshot timestamp in table output**: the table format now prints
+  `Snapshot taken: <timestamp>` above the results when the snapshot records
+  a `generatedAt` time, so it is always visible alongside the findings.
+
 ## v0.6.2 — 2026-11-10
 
 ### Fixes

@@ -29,6 +29,7 @@ func TestReplayTable(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
+		"Snapshot taken:", "2026-10-13",
 		"ruleset.check-source", "accepts any source: lint",
 		"workflow.pinned-actions", "actions/checkout@v5",
 		"How to fix:",
@@ -172,6 +173,34 @@ func TestFailOnUnknown(t *testing.T) {
 	code = run([]string{"--snapshot", p, "--baseline", writeBaseline(t), "--fail-on-unknown"}, &out, &errOut)
 	if code != exitOK {
 		t.Fatalf("empty snapshot with --fail-on-unknown: exit %d, want %d; stderr: %s", code, exitOK, errOut.String())
+	}
+}
+
+func TestMaxSnapshotAge(t *testing.T) {
+	// fixture is from 2026-10-13, so 1h will always reject it.
+	var out, errOut bytes.Buffer
+	code := run([]string{"--snapshot", fixture, "--max-snapshot-age", "1h"}, &out, &errOut)
+	if code != exitError {
+		t.Errorf("exit %d, want %d (snapshot too old)", code, exitError)
+	}
+	if !strings.Contains(errOut.String(), "too old") {
+		t.Errorf("stderr %q: want \"too old\" message", errOut.String())
+	}
+
+	// A very large max age must not reject the fixture.
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"--snapshot", fixture, "--max-snapshot-age", "87600h"}, &out, &errOut)
+	if code == exitError {
+		t.Errorf("exit %d (unexpected error with large max age): stderr=%s", code, errOut.String())
+	}
+
+	// Invalid duration must fail.
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"--snapshot", fixture, "--max-snapshot-age", "bogus"}, &out, &errOut)
+	if code != exitError {
+		t.Errorf("exit %d, want %d (invalid duration)", code, exitError)
 	}
 }
 
