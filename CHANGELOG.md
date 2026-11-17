@@ -1,6 +1,15 @@
 # Changelog
 
-## v0.9.0 — 2026-11-17 (unreleased)
+## v0.10.0 — 2026-11-17 (unreleased)
+
+### New checks
+- **`workflow.reusable-callee-pinned`**: fails when a job calls an external
+  reusable workflow (`uses: owner/repo/.github/workflows/...@ref`) without
+  pinning to a full commit SHA. Reusable workflows are as capable as direct
+  code execution; a mutable tag or branch ref is a supply-chain risk identical
+  to unpinned actions.
+
+## v0.9.0 — 2026-11-17
 
 ### New checks
 - **`workflow.token-permissions-scope`**: fails when any workflow uses

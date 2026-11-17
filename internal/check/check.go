@@ -343,6 +343,33 @@ var catalog = []Check{
 		},
 	},
 	{
+		ID:          "workflow.reusable-callee-pinned",
+		Severity:    Medium,
+		Remediation: "Reference reusable workflows by full commit SHA with the version in a comment, e.g. `owner/repo/.github/workflows/ci.yml@<sha> # v2.3.0`.",
+		Run: func(in Input) (Status, string) {
+			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldWorkflows); ok {
+				return st, msg
+			}
+			if len(in.Repo.Workflows) == 0 {
+				return Skip, "no workflows"
+			}
+			var refs []string
+			for _, w := range in.Repo.Workflows {
+				for _, a := range w.Evidence.Actions {
+					if a.Kind == workflowparse.ActionKindReusable && !a.Pinned {
+						refs = append(refs, a.Ref)
+					}
+				}
+			}
+			if len(refs) > 0 {
+				slices.Sort(refs)
+				refs = slices.Compact(refs)
+				return Fail, "reusable workflow not pinned to a SHA: " + strings.Join(refs, ", ")
+			}
+			return Pass, "all reusable workflow calls pinned"
+		},
+	},
+	{
 		ID:          "workflow.dependabot-actions",
 		Severity:    Low,
 		Remediation: "Add a `github-actions` entry to .github/dependabot.yml so pinned SHAs get updated.",
