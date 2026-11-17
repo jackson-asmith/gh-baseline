@@ -9,12 +9,18 @@ import (
 	"time"
 )
 
+// CurrentSchemaVersion is the schema version written by this build. Increment
+// it whenever the Snapshot or Repo JSON representation changes in a way that
+// would cause an older evaluator to misread a newer snapshot.
+const CurrentSchemaVersion = 1
+
 // Snapshot is everything collected in one run.
 type Snapshot struct {
-	GeneratedAt time.Time `json:"generatedAt"`
-	Host        string    `json:"host"`
-	Owner       string    `json:"owner"`
-	Repos       []Repo    `json:"repos"`
+	SchemaVersion int       `json:"schemaVersion"`
+	GeneratedAt   time.Time `json:"generatedAt"`
+	Host          string    `json:"host"`
+	Owner         string    `json:"owner"`
+	Repos         []Repo    `json:"repos"`
 }
 
 // Repo is one repository's collected state. A field that could not be read
@@ -119,7 +125,9 @@ func (r Repo) RequiredChecks() ([]RequiredCheck, error) {
 	return out, nil
 }
 
-// Load reads a snapshot from a JSON file.
+// Load reads a snapshot from a JSON file. Snapshots with no schemaVersion are
+// treated as version 0 (compatible). Snapshots from a future version that this
+// build cannot interpret are rejected.
 func Load(path string) (*Snapshot, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -129,11 +137,15 @@ func Load(path string) (*Snapshot, error) {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if s.SchemaVersion > CurrentSchemaVersion {
+		return nil, fmt.Errorf("%s: snapshot schema version %d is newer than this build supports (%d); upgrade gh-baseline", path, s.SchemaVersion, CurrentSchemaVersion)
+	}
 	return &s, nil
 }
 
-// Save writes a snapshot as indented JSON.
+// Save writes a snapshot as indented JSON, stamping the current schema version.
 func (s *Snapshot) Save(path string) error {
+	s.SchemaVersion = CurrentSchemaVersion
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err

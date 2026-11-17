@@ -59,7 +59,7 @@ func (c *Collector) Collect(ctx context.Context, opt Options) (*snapshot.Snapsho
 		skip[strings.ToLower(e)] = true
 	}
 
-	snap := &snapshot.Snapshot{GeneratedAt: time.Now().UTC(), Host: c.API.Host, Owner: opt.Owner}
+	snap := &snapshot.Snapshot{SchemaVersion: snapshot.CurrentSchemaVersion, GeneratedAt: time.Now().UTC(), Host: c.API.Host, Owner: opt.Owner}
 	for _, name := range names {
 		if skip[strings.ToLower(name)] {
 			continue
