@@ -1,6 +1,14 @@
 # Changelog
 
-## v0.8.0 — 2026-11-17 (unreleased)
+## v0.9.0 — 2026-11-17 (unreleased)
+
+### New checks
+- **`workflow.token-permissions-scope`**: fails when any workflow uses
+  `permissions: write-all` at the top level. Declaring permissions explicitly
+  satisfies `workflow.token-permissions`, but `write-all` is not least-privilege.
+  This check catches that case and asks for an explicit scope map instead.
+
+## v0.8.0 — 2026-11-17
 
 ### Changed
 - **`WorkflowEvidence` in snapshot (schema v3)**: the collector now parses

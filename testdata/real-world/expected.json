@@ -11,6 +11,7 @@
       "security.security-policy": "skip",
       "security.vuln-reporting": "skip",
       "workflow.token-permissions": "fail",
+      "workflow.token-permissions-scope": "pass",
       "workflow.pinned-actions": "fail",
       "workflow.dependabot-actions": "fail",
       "workflow.stale-secrets": "pass"
@@ -25,6 +26,7 @@
       "security.security-policy": "fail",
       "security.vuln-reporting": "pass",
       "workflow.token-permissions": "skip",
+      "workflow.token-permissions-scope": "skip",
       "workflow.pinned-actions": "skip",
       "workflow.dependabot-actions": "skip",
       "workflow.stale-secrets": "skip"
@@ -39,6 +41,7 @@
       "security.security-policy": "pass",
       "security.vuln-reporting": "pass",
       "workflow.token-permissions": "fail",
+      "workflow.token-permissions-scope": "pass",
       "workflow.pinned-actions": "fail",
       "workflow.dependabot-actions": "pass",
       "workflow.stale-secrets": "pass"
@@ -53,6 +56,7 @@
       "security.security-policy": "pass",
       "security.vuln-reporting": "pass",
       "workflow.token-permissions": "pass",
+      "workflow.token-permissions-scope": "pass",
       "workflow.pinned-actions": "pass",
       "workflow.dependabot-actions": "pass",
       "workflow.stale-secrets": "pass"
@@ -67,6 +71,7 @@
       "security.security-policy": "fail",
       "security.vuln-reporting": "pass",
       "workflow.token-permissions": "pass",
+      "workflow.token-permissions-scope": "pass",
       "workflow.pinned-actions": "pass",
       "workflow.dependabot-actions": "pass",
       "workflow.stale-secrets": "pass"

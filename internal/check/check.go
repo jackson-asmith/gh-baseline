@@ -272,7 +272,7 @@ var catalog = []Check{
 	{
 		ID:          "workflow.token-permissions",
 		Severity:    Medium,
-		Remediation: "Declare `permissions:` explicitly at the top level. Default to `permissions: contents: read` and grant additional scopes per job only where needed. Note: `permissions: write-all` is an explicit declaration but not least-privilege; a future check will flag it separately.",
+		Remediation: "Declare `permissions:` explicitly at the top level. Default to `permissions: contents: read` and grant additional scopes per job only where needed.",
 		Run: func(in Input) (Status, string) {
 			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldWorkflows); ok {
 				return st, msg
@@ -290,6 +290,29 @@ var catalog = []Check{
 				return Fail, "no top-level permissions: " + strings.Join(missing, ", ")
 			}
 			return Pass, "every workflow declares permissions"
+		},
+	},
+	{
+		ID:          "workflow.token-permissions-scope",
+		Severity:    Medium,
+		Remediation: "Replace `permissions: write-all` with an explicit scope map granting only the scopes each job needs.",
+		Run: func(in Input) (Status, string) {
+			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldWorkflows); ok {
+				return st, msg
+			}
+			if len(in.Repo.Workflows) == 0 {
+				return Skip, "no workflows"
+			}
+			var broad []string
+			for _, w := range in.Repo.Workflows {
+				if w.Evidence.Permissions != nil && w.Evidence.Permissions.WriteAll {
+					broad = append(broad, w.Path)
+				}
+			}
+			if len(broad) > 0 {
+				return Fail, "permissions: write-all in " + strings.Join(broad, ", ")
+			}
+			return Pass, "no workflow grants write-all"
 		},
 	},
 	{

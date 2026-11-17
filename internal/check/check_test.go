@@ -176,6 +176,14 @@ func TestChecks(t *testing.T) {
 		}, ciTier, Fail, "ci.yml"},
 		{"workflow.token-permissions", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciTier, Skip, ""},
 
+		{"workflow.token-permissions-scope", "write-all", func(r *snapshot.Repo) {
+			r.Workflows[0] = wf(r.Workflows[0].Path, "permissions: write-all\njobs: {}\n")
+		}, ciTier, Fail, "ci.yml"},
+		{"workflow.token-permissions-scope", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciTier, Skip, ""},
+		{"workflow.token-permissions-scope", "workflows unreadable", func(r *snapshot.Repo) {
+			r.Errors = map[string]string{snapshot.FieldWorkflows: "HTTP 403"}
+		}, ciTier, Unknown, "HTTP 403"},
+
 		{"workflow.pinned-actions", "tag reference", func(r *snapshot.Repo) {
 			r.Workflows[0] = wf(r.Workflows[0].Path, r.Workflows[0].Content+"      - uses: actions/cache@v4\n")
 		}, ciTier, Fail, "actions/cache@v4"},
