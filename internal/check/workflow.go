@@ -15,9 +15,9 @@ import (
 // See docs/adr/0004-yaml-parser-for-workflows.md.
 
 var (
-	secretRef         = regexp.MustCompile(`\$\{\{[^}]*\bsecrets\.([A-Za-z0-9_]+)`)
-	fullSHA           = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	dependabotActions = regexp.MustCompile(`package-ecosystem\s*:\s*["']?github-actions\b`)
+	// secretRef matches both ${{ secrets.NAME }} and ${{ secrets['NAME'] }} / ${{ secrets["NAME"] }}.
+	secretRef = regexp.MustCompile(`\$\{\{[^}]*\bsecrets(?:\.([A-Za-z0-9_]+)|\[['"]([A-Za-z0-9_]+)['"])`)
+	fullSHA   = regexp.MustCompile(`^[0-9a-f]{40}$`)
 )
 
 func hasTopLevelPermissions(content string) bool {
@@ -34,8 +34,9 @@ type workflowDoc struct {
 }
 
 type workflowJob struct {
-	Uses  string         `yaml:"uses"`
-	Steps []workflowStep `yaml:"steps"`
+	Uses    string         `yaml:"uses"`
+	Secrets any            `yaml:"secrets"`
+	Steps   []workflowStep `yaml:"steps"`
 }
 
 type workflowStep struct {
@@ -85,12 +86,16 @@ func pinned(ref string) bool {
 }
 
 // secretsUsed returns the names of repository secrets a workflow references,
-// excluding the automatic GITHUB_TOKEN.
+// excluding the automatic GITHUB_TOKEN. Matches both dot notation
+// (${{ secrets.NAME }}) and bracket notation (${{ secrets['NAME'] }}).
 func secretsUsed(content string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, m := range secretRef.FindAllStringSubmatch(content, -1) {
 		name := m[1]
+		if name == "" {
+			name = m[2]
+		}
 		if name == "GITHUB_TOKEN" || seen[name] {
 			continue
 		}
@@ -98,4 +103,78 @@ func secretsUsed(content string) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+// workflowTriggers returns the event names from the `on:` block. The on: value
+// can be a string, a list of strings, or a mapping of event names to options.
+func workflowTriggers(content string) []string {
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return nil
+	}
+	switch v := doc["on"].(type) {
+	case string:
+		return []string{v}
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, t := range v {
+			if s, ok := t.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	case map[string]any:
+		out := make([]string, 0, len(v))
+		for k := range v {
+			out = append(out, k)
+		}
+		return out
+	}
+	return nil
+}
+
+// hasAutomaticTrigger reports whether any of the given triggers can fire
+// without a human push (schedule or repository_dispatch).
+func hasAutomaticTrigger(triggers []string) bool {
+	for _, t := range triggers {
+		if t == "schedule" || t == "repository_dispatch" {
+			return true
+		}
+	}
+	return false
+}
+
+// secretsInherit reports whether any job in the workflow passes all secrets to
+// a reusable workflow via `secrets: inherit`.
+func secretsInherit(content string) bool {
+	var doc workflowDoc
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return false
+	}
+	for _, job := range doc.Jobs {
+		if s, ok := job.Secrets.(string); ok && s == "inherit" {
+			return true
+		}
+	}
+	return false
+}
+
+// dependabotCoversActions reports whether dependabot.yml has a github-actions
+// entry in its updates list. Parses the YAML to avoid false positives from
+// comments that contain the string.
+func dependabotCoversActions(content string) bool {
+	var doc struct {
+		Updates []struct {
+			Ecosystem string `yaml:"package-ecosystem"`
+		} `yaml:"updates"`
+	}
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return false
+	}
+	for _, u := range doc.Updates {
+		if u.Ecosystem == "github-actions" {
+			return true
+		}
+	}
+	return false
 }

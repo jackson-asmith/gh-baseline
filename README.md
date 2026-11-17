@@ -60,7 +60,10 @@ gh baseline --baseline baseline.json --format json
 ```
 
 Exit codes: `0` nothing failed, `1` at least one check failed, `2` the run
-itself failed. `unknown` results don't fail the run, but they're listed. A
+itself failed. `unknown` results don't fail the run by default, but they're
+listed. Pass `--fail-on-unknown` to treat any `unknown` result as a failure
+(exit `1`); this is recommended for scheduled audits, where a token scope
+reduction or permissions change would otherwise produce a silent partial pass. A
 repository that can't be read at all is reported as `unknown` for every check
 rather than stopping the run. Transient API errors are retried; an exhausted
 rate limit stops the run with exit `2` and says when it resets.

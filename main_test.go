@@ -142,6 +142,39 @@ func TestUsageErrors(t *testing.T) {
 	}
 }
 
+func TestFailOnUnknown(t *testing.T) {
+	// Without the flag, unknown findings do not cause a non-zero exit beyond
+	// what failures already cause. The fixture has failures, so this tests
+	// that the flag is not required for the failing case.
+	var out, errOut bytes.Buffer
+	code := run([]string{"--snapshot", fixture, "--baseline", writeBaseline(t)}, &out, &errOut)
+	if code != exitFindings {
+		t.Fatalf("without --fail-on-unknown: exit %d, want %d", code, exitFindings)
+	}
+
+	// With the flag set, unknown findings also trigger exit 1.
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"--snapshot", fixture, "--baseline", writeBaseline(t), "--fail-on-unknown"}, &out, &errOut)
+	if code != exitFindings {
+		t.Fatalf("with --fail-on-unknown: exit %d, want %d", code, exitFindings)
+	}
+
+	// The flag must not change exit code when there are no unknowns and no failures.
+	// Write a snapshot where every check passes or skips.
+	allPassSnap := `{"generatedAt":"2026-01-01T00:00:00Z","owner":"acme","repos":[]}`
+	p := filepath.Join(t.TempDir(), "pass.json")
+	if err := os.WriteFile(p, []byte(allPassSnap), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"--snapshot", p, "--baseline", writeBaseline(t), "--fail-on-unknown"}, &out, &errOut)
+	if code != exitOK {
+		t.Fatalf("empty snapshot with --fail-on-unknown: exit %d, want %d; stderr: %s", code, exitOK, errOut.String())
+	}
+}
+
 func TestNoOwner(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := run(nil, &out, &errOut)
