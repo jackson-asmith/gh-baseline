@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"text/tabwriter"
+	"time"
 
 	"github.com/jackson-asmith/gh-baseline/internal/check"
 )
@@ -34,8 +35,12 @@ func Summarize(fs []check.Finding) Summary {
 }
 
 // Table writes findings as an aligned table. Unless all is set, only failures
-// and unknowns are shown, followed by their remediations.
-func Table(w io.Writer, fs []check.Finding, all bool) error {
+// and unknowns are shown, followed by their remediations. When generatedAt is
+// non-zero the snapshot timestamp is printed above the table.
+func Table(w io.Writer, fs []check.Finding, all bool, generatedAt time.Time) error {
+	if !generatedAt.IsZero() {
+		fmt.Fprintf(w, "Snapshot taken: %s\n\n", generatedAt.UTC().Format(time.RFC3339))
+	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "REPO\tCHECK\tSTATUS\tSEVERITY\tDETAIL")
 	for _, f := range fs {

@@ -47,15 +47,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gh-baseline", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var (
-		baselinePath  = flags.String("baseline", "", "baseline file (JSON); default: every repo in the basic tier")
-		owner         = flags.String("owner", "", "account to audit (overrides the baseline's owner)")
-		hostname      = flags.String("hostname", "", "GitHub host (default: GH_HOST or github.com)")
-		snapIn        = flags.String("snapshot", "", "evaluate a saved snapshot instead of calling the API")
-		snapOut       = flags.String("save-snapshot", "", "write the collected snapshot to this file")
-		format        = flags.String("format", "table", "output format: table, json, or sarif")
-		all           = flags.Bool("all", false, "show passing and skipped checks too (table format)")
-		failOnUnknown = flags.Bool("fail-on-unknown", false, "exit 1 when any check is unknown (recommended for scheduled audits)")
-		repos         listFlag
+		baselinePath   = flags.String("baseline", "", "baseline file (JSON); default: every repo in the basic tier")
+		owner          = flags.String("owner", "", "account to audit (overrides the baseline's owner)")
+		hostname       = flags.String("hostname", "", "GitHub host (default: GH_HOST or github.com)")
+		snapIn         = flags.String("snapshot", "", "evaluate a saved snapshot instead of calling the API")
+		snapOut        = flags.String("save-snapshot", "", "write the collected snapshot to this file")
+		format         = flags.String("format", "table", "output format: table, json, or sarif")
+		all            = flags.Bool("all", false, "show passing and skipped checks too (table format)")
+		failOnUnknown  = flags.Bool("fail-on-unknown", false, "exit 1 when any check is unknown (recommended for scheduled audits)")
+		maxSnapshotAge = flags.String("max-snapshot-age", "", "reject snapshots older than this duration (e.g. 24h)")
+		repos          listFlag
 	)
 	flags.Var(&repos, "repo", "repository to audit (repeatable); default: all of the owner's repos")
 	flags.Usage = func() {
@@ -116,6 +117,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
+	if *maxSnapshotAge != "" {
+		maxAge, err := time.ParseDuration(*maxSnapshotAge)
+		if err != nil {
+			return fail("invalid --max-snapshot-age %q: %v", *maxSnapshotAge, err)
+		}
+		if snap.GeneratedAt.IsZero() {
+			return fail("snapshot has no generatedAt field: cannot verify age against --max-snapshot-age")
+		}
+		if age := time.Since(snap.GeneratedAt); age > maxAge {
+			return fail("snapshot is too old (%s > --max-snapshot-age %s)", age.Round(time.Second), maxAge)
+		}
+	}
+
 	findings := check.Evaluate(snap, b, time.Now())
 	var err error
 	switch *format {
@@ -124,7 +138,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "sarif":
 		err = report.SARIF(stdout, findings)
 	default:
-		err = report.Table(stdout, findings, *all)
+		err = report.Table(stdout, findings, *all, snap.GeneratedAt)
 	}
 	if err != nil {
 		return fail("%v", err)
