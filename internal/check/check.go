@@ -46,10 +46,19 @@ type Finding struct {
 	Remediation string   `json:"remediation,omitempty"`
 }
 
+// Policy is the internal representation of what a repository should be
+// checked against. It is derived from the baseline configuration at evaluation
+// time and is independent of the baseline JSON format, so the config schema can
+// evolve (e.g. per-check severity overrides) without touching individual checks.
+type Policy struct {
+	RequirePullRequest  bool
+	RequireStatusChecks bool
+}
+
 // Input is what a check sees.
 type Input struct {
 	Repo      snapshot.Repo
-	Tier      baseline.Tier
+	Policy    Policy
 	Now       time.Time
 	StaleDays int
 }
@@ -67,7 +76,11 @@ func Evaluate(s *snapshot.Snapshot, b *baseline.Baseline, now time.Time) []Findi
 	var out []Finding
 	for _, r := range s.Repos {
 		tierName, tier := b.TierFor(r.Name)
-		in := Input{Repo: r, Tier: tier, Now: now, StaleDays: b.StaleDays}
+		policy := Policy{
+			RequirePullRequest:  tier.RequirePullRequest,
+			RequireStatusChecks: tier.RequireStatusChecks,
+		}
+		in := Input{Repo: r, Policy: policy, Now: now, StaleDays: b.StaleDays}
 		repoErr, unreadable := r.Errors[snapshot.FieldRepo]
 		for _, c := range catalog {
 			var st Status
@@ -151,7 +164,7 @@ var catalog = []Check{
 		Severity:    Medium,
 		Remediation: "Add \"Require a pull request before merging\" to the default-branch ruleset.",
 		Run: func(in Input) (Status, string) {
-			if !in.Tier.RequirePullRequest {
+			if !in.Policy.RequirePullRequest {
 				return Skip, "tier doesn't require pull requests"
 			}
 			if st, msg, ok := rulesUnreadable(in.Repo); ok {
@@ -168,7 +181,7 @@ var catalog = []Check{
 		Severity:    Medium,
 		Remediation: "Add \"Require status checks to pass\" with the CI jobs that must succeed.",
 		Run: func(in Input) (Status, string) {
-			if !in.Tier.RequireStatusChecks {
+			if !in.Policy.RequireStatusChecks {
 				return Skip, "tier doesn't require status checks"
 			}
 			if st, msg, ok := rulesUnreadable(in.Repo); ok {

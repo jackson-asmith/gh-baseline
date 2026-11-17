@@ -86,9 +86,10 @@ func healthy() snapshot.Repo {
 const planLimited = "HTTP 403: Upgrade to GitHub Pro or make this repository public to enable this feature."
 
 var ciTier = baseline.Tier{RequirePullRequest: true, RequireStatusChecks: true}
+var ciPolicy = Policy{RequirePullRequest: true, RequireStatusChecks: true}
 
 func TestHealthyRepoPassesEverything(t *testing.T) {
-	in := Input{Repo: healthy(), Tier: ciTier, Now: now, StaleDays: 365}
+	in := Input{Repo: healthy(), Policy: ciPolicy, Now: now, StaleDays: 365}
 	for _, c := range catalog {
 		if st, msg := c.Run(in); st != Pass {
 			t.Errorf("%s: got %s (%s), want pass", c.ID, st, msg)
@@ -101,144 +102,144 @@ func TestChecks(t *testing.T) {
 		check  string
 		name   string
 		mutate func(*snapshot.Repo)
-		tier   baseline.Tier
+		policy Policy
 		want   Status
 		detail string // substring expected in the message
 	}{
-		{"ruleset.branch-safety", "no rules", func(r *snapshot.Repo) { r.Rules = nil }, ciTier, Fail, "deletion and force push"},
-		{"ruleset.branch-safety", "force pushes allowed", func(r *snapshot.Repo) { r.Rules = r.Rules[:1] }, ciTier, Fail, "force push"},
-		{"ruleset.branch-safety", "rules unreadable", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": "HTTP 403"} }, ciTier, Unknown, "HTTP 403"},
+		{"ruleset.branch-safety", "no rules", func(r *snapshot.Repo) { r.Rules = nil }, ciPolicy, Fail, "deletion and force push"},
+		{"ruleset.branch-safety", "force pushes allowed", func(r *snapshot.Repo) { r.Rules = r.Rules[:1] }, ciPolicy, Fail, "force push"},
+		{"ruleset.branch-safety", "rules unreadable", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": "HTTP 403"} }, ciPolicy, Unknown, "HTTP 403"},
 		{"ruleset.branch-safety", "plan without rulesets", func(r *snapshot.Repo) {
 			r.RulesetsUnavailable = true
-		}, ciTier, Skip, "paid plan"},
-		{"ruleset.branch-safety", "error text not interpreted", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": planLimited} }, ciTier, Unknown, "HTTP 403"}, // checks never interpret error text; the collector does
+		}, ciPolicy, Skip, "paid plan"},
+		{"ruleset.branch-safety", "error text not interpreted", func(r *snapshot.Repo) { r.Errors = map[string]string{"rules": planLimited} }, ciPolicy, Unknown, "HTTP 403"}, // checks never interpret error text; the collector does
 		{"ruleset.branch-safety", "private repo, rules not found", func(r *snapshot.Repo) {
 			r.Private = true
 			r.Errors = map[string]string{"rules": "HTTP 404: Not Found"}
-		}, ciTier, Unknown, "HTTP 404"},
+		}, ciPolicy, Unknown, "HTTP 404"},
 		{"ruleset.pull-request", "plan without rulesets", func(r *snapshot.Repo) {
 			r.RulesetsUnavailable = true
-		}, ciTier, Skip, "paid plan"},
+		}, ciPolicy, Skip, "paid plan"},
 		{"ruleset.status-checks", "plan without rulesets", func(r *snapshot.Repo) {
 			r.RulesetsUnavailable = true
-		}, ciTier, Skip, "paid plan"},
+		}, ciPolicy, Skip, "paid plan"},
 		{"ruleset.check-source", "plan without rulesets", func(r *snapshot.Repo) {
 			r.RulesetsUnavailable = true
-		}, ciTier, Skip, "paid plan"},
+		}, ciPolicy, Skip, "paid plan"},
 
-		{"ruleset.pull-request", "no pull request rule", func(r *snapshot.Repo) { r.Rules = r.Rules[:2] }, ciTier, Fail, "without a pull request"},
-		{"ruleset.pull-request", "tier does not require", func(r *snapshot.Repo) { r.Rules = nil }, baseline.Tier{}, Skip, ""},
+		{"ruleset.pull-request", "no pull request rule", func(r *snapshot.Repo) { r.Rules = r.Rules[:2] }, ciPolicy, Fail, "without a pull request"},
+		{"ruleset.pull-request", "tier does not require", func(r *snapshot.Repo) { r.Rules = nil }, Policy{}, Skip, ""},
 
-		{"ruleset.status-checks", "none required", func(r *snapshot.Repo) { r.Rules = r.Rules[:3] }, ciTier, Fail, "no status checks"},
-		{"ruleset.status-checks", "tier does not require", func(r *snapshot.Repo) { r.Rules = nil }, baseline.Tier{RequirePullRequest: true}, Skip, ""},
+		{"ruleset.status-checks", "none required", func(r *snapshot.Repo) { r.Rules = r.Rules[:3] }, ciPolicy, Fail, "no status checks"},
+		{"ruleset.status-checks", "tier does not require", func(r *snapshot.Repo) { r.Rules = nil }, Policy{RequirePullRequest: true}, Skip, ""},
 
-		{"ruleset.check-source", "any source accepted", func(r *snapshot.Repo) { r.Rules[3] = checksRule(ptr(int64(15368)), nil) }, ciTier, Fail, "jobB"},
-		{"ruleset.check-source", "no required checks", func(r *snapshot.Repo) { r.Rules = r.Rules[:3] }, ciTier, Skip, ""},
+		{"ruleset.check-source", "any source accepted", func(r *snapshot.Repo) { r.Rules[3] = checksRule(ptr(int64(15368)), nil) }, ciPolicy, Fail, "jobB"},
+		{"ruleset.check-source", "no required checks", func(r *snapshot.Repo) { r.Rules = r.Rules[:3] }, ciPolicy, Skip, ""},
 
 		{"security.secret-scanning", "off", func(r *snapshot.Repo) {
 			r.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: snapshot.FeatureDisabled}
-		}, ciTier, Fail, "off"},
+		}, ciPolicy, Fail, "off"},
 		{"security.secret-scanning", "private repo, security_and_analysis not returned", func(r *snapshot.Repo) {
 			r.Private = true
 			r.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationUnavailable, ReasonCode: snapshot.ReasonPlanUnavailable}
-		}, ciTier, Skip, "private"},
+		}, ciPolicy, Skip, "private"},
 		{"security.secret-scanning", "private repo, security_and_analysis returned and enabled", func(r *snapshot.Repo) {
 			r.Private = true
-		}, ciTier, Pass, "on"},
+		}, ciPolicy, Pass, "on"},
 		{"security.secret-scanning", "private repo, feature key absent", func(r *snapshot.Repo) {
 			r.Private = true
 			r.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationUnavailable, ReasonCode: snapshot.ReasonPlanUnavailable}
-		}, ciTier, Skip, "paid plan"},
+		}, ciPolicy, Skip, "paid plan"},
 		{"security.secret-scanning", "settings unreadable", func(r *snapshot.Repo) {
 			r.RepoSecurity.SecretScanning = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationError, Message: "x"}
-		}, ciTier, Unknown, ""},
+		}, ciPolicy, Unknown, ""},
 		{"security.push-protection", "status not returned", func(r *snapshot.Repo) {
 			r.RepoSecurity.PushProtection = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationUnavailable}
-		}, ciTier, Unknown, "not returned"},
+		}, ciPolicy, Unknown, "not returned"},
 
 		{"security.security-policy", "missing", func(r *snapshot.Repo) {
 			r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{State: snapshot.ObservationAvailable, Value: snapshot.PolicyAbsent}
-		}, ciTier, Fail, "no SECURITY.md"},
-		{"security.security-policy", "private repo", func(r *snapshot.Repo) { r.Private = true }, ciTier, Skip, "private"},
+		}, ciPolicy, Fail, "no SECURITY.md"},
+		{"security.security-policy", "private repo", func(r *snapshot.Repo) { r.Private = true }, ciPolicy, Skip, "private"},
 		{"security.security-policy", "not collected", func(r *snapshot.Repo) {
 			r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{}
-		}, ciTier, Unknown, "not collected"},
+		}, ciPolicy, Unknown, "not collected"},
 		{"security.security-policy", "api error", func(r *snapshot.Repo) {
 			r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{State: snapshot.ObservationError, Message: "HTTP 403"}
-		}, ciTier, Unknown, "HTTP 403"},
+		}, ciPolicy, Unknown, "HTTP 403"},
 
 		{"security.vuln-reporting", "off", func(r *snapshot.Repo) {
 			r.VulnReporting = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: snapshot.FeatureDisabled}
-		}, ciTier, Fail, "off"},
+		}, ciPolicy, Fail, "off"},
 
 		{"workflow.token-permissions", "no top-level permissions", func(r *snapshot.Repo) {
 			r.Workflows[0] = wf(r.Workflows[0].Path, "jobs: {}\n")
-		}, ciTier, Fail, "ci.yml"},
-		{"workflow.token-permissions", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciTier, Skip, ""},
+		}, ciPolicy, Fail, "ci.yml"},
+		{"workflow.token-permissions", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciPolicy, Skip, ""},
 
 		{"workflow.token-permissions-scope", "write-all", func(r *snapshot.Repo) {
 			r.Workflows[0] = wf(r.Workflows[0].Path, "permissions: write-all\njobs: {}\n")
-		}, ciTier, Fail, "ci.yml"},
-		{"workflow.token-permissions-scope", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciTier, Skip, ""},
+		}, ciPolicy, Fail, "ci.yml"},
+		{"workflow.token-permissions-scope", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciPolicy, Skip, ""},
 		{"workflow.token-permissions-scope", "workflows unreadable", func(r *snapshot.Repo) {
 			r.Errors = map[string]string{snapshot.FieldWorkflows: "HTTP 403"}
-		}, ciTier, Unknown, "HTTP 403"},
+		}, ciPolicy, Unknown, "HTTP 403"},
 
 		{"workflow.pinned-actions", "tag reference", func(r *snapshot.Repo) {
 			r.Workflows[0] = wf(r.Workflows[0].Path, r.Workflows[0].Content+"      - uses: actions/cache@v4\n")
-		}, ciTier, Fail, "actions/cache@v4"},
+		}, ciPolicy, Fail, "actions/cache@v4"},
 
 		{"workflow.reusable-callee-pinned", "unpinned reusable", func(r *snapshot.Repo) {
 			r.Workflows[0] = wf(r.Workflows[0].Path, r.Workflows[0].Content+"  call:\n    uses: acme/shared/.github/workflows/ci.yml@main\n")
-		}, ciTier, Fail, "acme/shared/.github/workflows/ci.yml@main"},
+		}, ciPolicy, Fail, "acme/shared/.github/workflows/ci.yml@main"},
 		{"workflow.reusable-callee-pinned", "pinned reusable", func(r *snapshot.Repo) {
 			r.Workflows[0] = wf(r.Workflows[0].Path, r.Workflows[0].Content+"  call:\n    uses: acme/shared/.github/workflows/ci.yml@3d3c42e5aac5ba805825da76410c181273ba90b1\n")
-		}, ciTier, Pass, ""},
-		{"workflow.reusable-callee-pinned", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciTier, Skip, ""},
+		}, ciPolicy, Pass, ""},
+		{"workflow.reusable-callee-pinned", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciPolicy, Skip, ""},
 		{"workflow.reusable-callee-pinned", "workflows unreadable", func(r *snapshot.Repo) {
 			r.Errors = map[string]string{snapshot.FieldWorkflows: "HTTP 403"}
-		}, ciTier, Unknown, "HTTP 403"},
+		}, ciPolicy, Unknown, "HTTP 403"},
 
-		{"workflow.dependabot-actions", "no dependabot config", func(r *snapshot.Repo) { r.Dependabot = nil }, ciTier, Fail, "no dependabot.yml"},
-		{"workflow.dependabot-actions", "no actions ecosystem", func(r *snapshot.Repo) { r.Dependabot.Content = "- package-ecosystem: pip\n" }, ciTier, Fail, "github-actions"},
+		{"workflow.dependabot-actions", "no dependabot config", func(r *snapshot.Repo) { r.Dependabot = nil }, ciPolicy, Fail, "no dependabot.yml"},
+		{"workflow.dependabot-actions", "no actions ecosystem", func(r *snapshot.Repo) { r.Dependabot.Content = "- package-ecosystem: pip\n" }, ciPolicy, Fail, "github-actions"},
 
-		{"ruleset.check-source", "malformed parameters", func(r *snapshot.Repo) { r.Rules[3].Parameters = []byte(`{"required_status_checks":"oops"}`) }, ciTier, Unknown, "required_status_checks"},
-		{"ruleset.status-checks", "malformed parameters", func(r *snapshot.Repo) { r.Rules[3].Parameters = []byte(`not json`) }, ciTier, Unknown, "required_status_checks"},
+		{"ruleset.check-source", "malformed parameters", func(r *snapshot.Repo) { r.Rules[3].Parameters = []byte(`{"required_status_checks":"oops"}`) }, ciPolicy, Unknown, "required_status_checks"},
+		{"ruleset.status-checks", "malformed parameters", func(r *snapshot.Repo) { r.Rules[3].Parameters = []byte(`not json`) }, ciPolicy, Unknown, "required_status_checks"},
 
-		{"workflow.stale-secrets", "stale with secrets", func(r *snapshot.Repo) { r.PushedAt = now.AddDate(-3, 0, 0) }, ciTier, Fail, "TOKEN"},
-		{"workflow.stale-secrets", "no push date", func(r *snapshot.Repo) { r.PushedAt = time.Time{} }, ciTier, Unknown, "no push date"},
+		{"workflow.stale-secrets", "stale with secrets", func(r *snapshot.Repo) { r.PushedAt = now.AddDate(-3, 0, 0) }, ciPolicy, Fail, "TOKEN"},
+		{"workflow.stale-secrets", "no push date", func(r *snapshot.Repo) { r.PushedAt = time.Time{} }, ciPolicy, Unknown, "no push date"},
 		{"workflow.stale-secrets", "stale without secrets", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Workflows[0] = wf(r.Workflows[0].Path, "permissions: {}\n")
-		}, ciTier, Pass, "no secrets"},
+		}, ciPolicy, Pass, "no secrets"},
 		{"workflow.stale-secrets", "referenced secrets don't exist", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Secrets = []string{}
-		}, ciTier, Pass, "no such secrets exist"},
+		}, ciPolicy, Pass, "no such secrets exist"},
 		{"workflow.stale-secrets", "only referenced secrets count", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Secrets = []string{"UNRELATED"}
-		}, ciTier, Pass, "no such secrets exist"},
+		}, ciPolicy, Pass, "no such secrets exist"},
 		{"workflow.stale-secrets", "secret names are case-insensitive", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Secrets = []string{"token"}
-		}, ciTier, Fail, "TOKEN still exist"},
+		}, ciPolicy, Fail, "TOKEN still exist"},
 		{"workflow.stale-secrets", "secrets not collected", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Secrets = nil
-		}, ciTier, Unknown, "doesn't record which secrets exist"},
+		}, ciPolicy, Unknown, "doesn't record which secrets exist"},
 		{"workflow.stale-secrets", "secrets unreadable", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
 			r.Secrets = nil
 			r.Errors = map[string]string{snapshot.FieldSecrets: "HTTP 403: Resource not accessible"}
-		}, ciTier, Unknown, "HTTP 403"},
-		{"workflow.stale-secrets", "recent push needs no secret lookup", func(r *snapshot.Repo) { r.Secrets = nil }, ciTier, Pass, "last push"},
+		}, ciPolicy, Unknown, "HTTP 403"},
+		{"workflow.stale-secrets", "recent push needs no secret lookup", func(r *snapshot.Repo) { r.Secrets = nil }, ciPolicy, Pass, "last push"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.check+"/"+tt.name, func(t *testing.T) {
 			r := healthy()
 			tt.mutate(&r)
-			st, msg := byID(t, tt.check).Run(Input{Repo: r, Tier: tt.tier, Now: now, StaleDays: 365})
+			st, msg := byID(t, tt.check).Run(Input{Repo: r, Policy: tt.policy, Now: now, StaleDays: 365})
 			if st != tt.want {
 				t.Fatalf("got %s (%s), want %s", st, msg, tt.want)
 			}
@@ -262,11 +263,11 @@ func TestEvaluateUnreadableRepoIsUnknown(t *testing.T) {
 func TestSecurityPolicyMessages(t *testing.T) {
 	r := healthy()
 	r.SecurityPolicy = snapshot.Observation[snapshot.PolicyState]{State: snapshot.ObservationAvailable, Value: snapshot.PolicyPresent}
-	if _, msg := byID(t, "security.security-policy").Run(Input{Repo: r, Tier: ciTier, Now: now}); msg != "SECURITY.md exists" {
+	if _, msg := byID(t, "security.security-policy").Run(Input{Repo: r, Policy: ciPolicy, Now: now}); msg != "SECURITY.md exists" {
 		t.Errorf("own file: message = %q", msg)
 	}
 	r.SecurityPolicySource = "acme/.github"
-	if st, msg := byID(t, "security.security-policy").Run(Input{Repo: r, Tier: ciTier, Now: now}); st != Pass || msg != "SECURITY.md exists (account default from acme/.github)" {
+	if st, msg := byID(t, "security.security-policy").Run(Input{Repo: r, Policy: ciPolicy, Now: now}); st != Pass || msg != "SECURITY.md exists (account default from acme/.github)" {
 		t.Errorf("account default: got %s %q", st, msg)
 	}
 }
@@ -288,7 +289,7 @@ func TestCountMessages(t *testing.T) {
 		t.Run(tt.want, func(t *testing.T) {
 			r := healthy()
 			tt.mutate(&r)
-			if _, msg := byID(t, tt.check).Run(Input{Repo: r, Tier: ciTier, Now: now, StaleDays: 365}); msg != tt.want {
+			if _, msg := byID(t, tt.check).Run(Input{Repo: r, Policy: ciPolicy, Now: now, StaleDays: 365}); msg != tt.want {
 				t.Errorf("%s message = %q, want %q", tt.check, msg, tt.want)
 			}
 		})
