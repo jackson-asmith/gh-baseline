@@ -52,9 +52,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		hostname     = flags.String("hostname", "", "GitHub host (default: GH_HOST or github.com)")
 		snapIn       = flags.String("snapshot", "", "evaluate a saved snapshot instead of calling the API")
 		snapOut      = flags.String("save-snapshot", "", "write the collected snapshot to this file")
-		format       = flags.String("format", "table", "output format: table, json, or sarif")
-		all          = flags.Bool("all", false, "show passing and skipped checks too (table format)")
-		repos        listFlag
+		format         = flags.String("format", "table", "output format: table, json, or sarif")
+		all            = flags.Bool("all", false, "show passing and skipped checks too (table format)")
+		failOnUnknown  = flags.Bool("fail-on-unknown", false, "exit 1 when any check is unknown (recommended for scheduled audits)")
+		repos          listFlag
 	)
 	flags.Var(&repos, "repo", "repository to audit (repeatable); default: all of the owner's repos")
 	flags.Usage = func() {
@@ -128,7 +129,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail("%v", err)
 	}
-	if report.Summarize(findings).Fail > 0 {
+	sum := report.Summarize(findings)
+	if sum.Fail > 0 || (*failOnUnknown && sum.Unknown > 0) {
 		return exitFindings
 	}
 	return exitOK
