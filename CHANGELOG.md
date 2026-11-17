@@ -1,6 +1,15 @@
 # Changelog
 
-## v0.10.0 — 2026-11-17 (unreleased)
+## v0.11.0 — 2026-11-17 (unreleased)
+
+### Changed
+- **Policy normalization layer (B6)**: the `check` package now defines its own
+  `Policy` type that individual checks consume, decoupled from `baseline.Tier`.
+  The conversion from baseline configuration to internal policy happens once in
+  `Evaluate`. Adding new configuration fields (e.g. per-check severity overrides)
+  to the baseline JSON format no longer requires touching individual checks.
+
+## v0.10.0 — 2026-11-17
 
 ### New checks
 - **`workflow.reusable-callee-pinned`**: fails when a job calls an external
