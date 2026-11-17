@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.0 — 2026-11-17 (unreleased)
+
+### Changed
+- **`WorkflowEvidence` in snapshot (schema v3)**: the collector now parses
+  each workflow's YAML at collection time and stores structured domain facts
+  (`Triggers`, `Permissions`, `Actions`, `Secrets`) alongside the raw content.
+  Checks consume those facts directly, so offline re-evaluation with
+  `--snapshot` now gets trigger-aware stale-secrets and permission detection
+  without re-fetching any files. Snapshots saved before this release are
+  auto-migrated to v3 on load.
+
 ## v0.7.0 — 2026-11-17
 
 ### New features

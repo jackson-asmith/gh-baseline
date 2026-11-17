@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackson-asmith/gh-baseline/internal/baseline"
 	"github.com/jackson-asmith/gh-baseline/internal/snapshot"
+	"github.com/jackson-asmith/gh-baseline/internal/workflowparse"
 )
 
 // Status is the outcome of one check on one repository.
@@ -281,7 +282,7 @@ var catalog = []Check{
 			}
 			var missing []string
 			for _, w := range in.Repo.Workflows {
-				if !hasTopLevelPermissions(w.Content) {
+				if w.Evidence.Permissions == nil {
 					missing = append(missing, w.Path)
 				}
 			}
@@ -304,7 +305,11 @@ var catalog = []Check{
 			}
 			var refs []string
 			for _, w := range in.Repo.Workflows {
-				refs = append(refs, unpinnedUses(w.Content)...)
+				for _, a := range w.Evidence.Actions {
+					if !a.Pinned {
+						refs = append(refs, a.Ref)
+					}
+				}
 			}
 			if len(refs) > 0 {
 				slices.Sort(refs)
@@ -361,11 +366,14 @@ var catalog = []Check{
 			var names []string
 			var inherits, automatic bool
 			for _, w := range in.Repo.Workflows {
-				names = append(names, secretsUsed(w.Content)...)
-				if secretsInherit(w.Content) {
-					inherits = true
+				for _, s := range w.Evidence.Secrets {
+					if s.Inherited {
+						inherits = true
+					} else {
+						names = append(names, s.Name)
+					}
 				}
-				if hasAutomaticTrigger(workflowTriggers(w.Content)) {
+				if workflowparse.HasAutomaticTrigger(w.Evidence) {
 					automatic = true
 				}
 			}
