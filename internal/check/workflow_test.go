@@ -180,6 +180,52 @@ func TestSecretsInherit(t *testing.T) {
 	}
 }
 
+func TestWorkflowTriggers(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{"string shorthand", "on: push\n", []string{"push"}},
+		{"list", "on: [push, pull_request]\n", []string{"push", "pull_request"}},
+		{"mapping", "on:\n  push:\n  schedule:\n    - cron: '0 0 * * *'\n", nil}, // order not guaranteed; test hasAutomaticTrigger instead
+		{"empty", "", nil},
+	}
+	for _, tt := range tests {
+		if tt.want == nil {
+			continue // covered by hasAutomaticTrigger test below
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := workflowTriggers(tt.content); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasAutomaticTrigger(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"schedule trigger", "on:\n  schedule:\n    - cron: '0 0 * * *'\n", true},
+		{"repository_dispatch", "on: repository_dispatch\n", true},
+		{"push only", "on: push\n", false},
+		{"push and pull_request", "on: [push, pull_request]\n", false},
+		{"workflow_dispatch only", "on: workflow_dispatch\n", false},
+		{"comment mentioning schedule", "# on: schedule\non: push\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			triggers := workflowTriggers(tt.content)
+			if got := hasAutomaticTrigger(triggers); got != tt.want {
+				t.Errorf("got %v, want %v (triggers: %v)", got, tt.want, triggers)
+			}
+		})
+	}
+}
+
 func TestDependabotCoversActions(t *testing.T) {
 	tests := []struct {
 		name    string

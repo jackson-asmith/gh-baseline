@@ -105,6 +105,45 @@ func secretsUsed(content string) []string {
 	return out
 }
 
+// workflowTriggers returns the event names from the `on:` block. The on: value
+// can be a string, a list of strings, or a mapping of event names to options.
+func workflowTriggers(content string) []string {
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return nil
+	}
+	switch v := doc["on"].(type) {
+	case string:
+		return []string{v}
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, t := range v {
+			if s, ok := t.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	case map[string]any:
+		out := make([]string, 0, len(v))
+		for k := range v {
+			out = append(out, k)
+		}
+		return out
+	}
+	return nil
+}
+
+// hasAutomaticTrigger reports whether any of the given triggers can fire
+// without a human push (schedule or repository_dispatch).
+func hasAutomaticTrigger(triggers []string) bool {
+	for _, t := range triggers {
+		if t == "schedule" || t == "repository_dispatch" {
+			return true
+		}
+	}
+	return false
+}
+
 // secretsInherit reports whether any job in the workflow passes all secrets to
 // a reusable workflow via `secrets: inherit`.
 func secretsInherit(content string) bool {

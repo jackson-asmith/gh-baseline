@@ -255,7 +255,7 @@ var catalog = []Check{
 	{
 		ID:          "workflow.token-permissions",
 		Severity:    Medium,
-		Remediation: "Add a top-level `permissions: contents: read` to each workflow and grant more per job only where needed.",
+		Remediation: "Declare `permissions:` explicitly at the top level. Default to `permissions: contents: read` and grant additional scopes per job only where needed. Note: `permissions: write-all` is an explicit declaration but not least-privilege; a future check will flag it separately.",
 		Run: func(in Input) (Status, string) {
 			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldWorkflows); ok {
 				return st, msg
@@ -343,11 +343,14 @@ var catalog = []Check{
 				return Pass, "last push " + count(days, "day", "days") + " ago"
 			}
 			var names []string
-			var inherits bool
+			var inherits, automatic bool
 			for _, w := range in.Repo.Workflows {
 				names = append(names, secretsUsed(w.Content)...)
 				if secretsInherit(w.Content) {
 					inherits = true
+				}
+				if hasAutomaticTrigger(workflowTriggers(w.Content)) {
+					automatic = true
 				}
 			}
 			slices.Sort(names)
@@ -378,7 +381,10 @@ var catalog = []Check{
 			if len(live) == 0 {
 				return Pass, fmt.Sprintf("stale (%s); workflows use %s, but no such secrets exist", count(days, "day", "days"), used)
 			}
-			return Fail, fmt.Sprintf("no push in %s; secrets %s still exist and workflows use them", count(days, "day", "days"), strings.Join(live, ", "))
+			if automatic {
+				return Fail, fmt.Sprintf("no push in %s; secrets %s still exist and a scheduled workflow uses them", count(days, "day", "days"), strings.Join(live, ", "))
+			}
+			return Fail, fmt.Sprintf("no push in %s; secrets %s still exist and workflows reference them (push-only triggers — reachable only on a future push)", count(days, "day", "days"), strings.Join(live, ", "))
 		},
 	},
 }
@@ -404,16 +410,22 @@ func securityToggle(id, key, label, remediation string) Check {
 		Severity:    High,
 		Remediation: remediation,
 		Run: func(in Input) (Status, string) {
-			if in.Repo.Private {
-				return Skip, "private repository (paid feature)"
-			}
-			if st, msg, ok := unknownIf(in.Repo, snapshot.FieldSecurity); ok {
-				return st, msg
+			if _, ok := in.Repo.Errors[snapshot.FieldSecurity]; ok {
+				// security_and_analysis wasn't returned at all. For private repos
+				// this is expected on free plans; for public repos it's unexpected.
+				if in.Repo.Private {
+					return Skip, "private repository (feature may require a paid plan)"
+				}
+				return Unknown, "couldn't read security_and_analysis"
 			}
 			switch in.Repo.Security[key] {
 			case "enabled":
 				return Pass, label + " is on"
 			case "":
+				// security_and_analysis was returned but this feature key is absent.
+				if in.Repo.Private {
+					return Skip, "private repository (feature requires a paid plan)"
+				}
 				return Unknown, label + " status not returned"
 			default:
 				return Fail, label + " is off"

@@ -127,7 +127,18 @@ func TestChecks(t *testing.T) {
 		{"ruleset.check-source", "no required checks", func(r *snapshot.Repo) { r.Rules = r.Rules[:3] }, ciTier, Skip, ""},
 
 		{"security.secret-scanning", "off", func(r *snapshot.Repo) { r.Security["secret_scanning"] = "disabled" }, ciTier, Fail, "off"},
-		{"security.secret-scanning", "private repo", func(r *snapshot.Repo) { r.Private = true }, ciTier, Skip, "private"},
+		{"security.secret-scanning", "private repo, security_and_analysis not returned", func(r *snapshot.Repo) {
+			r.Private = true
+			r.Security = nil
+			r.Errors = map[string]string{"security": "security_and_analysis not returned"}
+		}, ciTier, Skip, "private"},
+		{"security.secret-scanning", "private repo, security_and_analysis returned and enabled", func(r *snapshot.Repo) {
+			r.Private = true
+		}, ciTier, Pass, "on"},
+		{"security.secret-scanning", "private repo, feature key absent", func(r *snapshot.Repo) {
+			r.Private = true
+			delete(r.Security, "secret_scanning")
+		}, ciTier, Skip, "paid plan"},
 		{"security.secret-scanning", "settings unreadable", func(r *snapshot.Repo) { r.Security = nil; r.Errors = map[string]string{"security": "x"} }, ciTier, Unknown, ""},
 		{"security.push-protection", "status not returned", func(r *snapshot.Repo) { delete(r.Security, "secret_scanning_push_protection") }, ciTier, Unknown, "not returned"},
 
