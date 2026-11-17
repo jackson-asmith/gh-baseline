@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackson-asmith/gh-baseline/internal/ghapi"
 	"github.com/jackson-asmith/gh-baseline/internal/snapshot"
+	"github.com/jackson-asmith/gh-baseline/internal/workflowparse"
 )
 
 // Options controls which repositories are collected.
@@ -485,18 +486,18 @@ func (c *Collector) rules(ctx context.Context, path string) ([]snapshot.Rule, er
 	return out, nil
 }
 
-func (c *Collector) workflows(ctx context.Context, base string) ([]snapshot.File, error) {
+func (c *Collector) workflows(ctx context.Context, base string) ([]snapshot.WorkflowFile, error) {
 	var entries []struct {
 		Path string `json:"path"`
 		Type string `json:"type"`
 	}
 	if _, err := c.API.Get(ctx, base+"/contents/.github/workflows", &entries); err != nil {
 		if ghapi.IsNotFound(err) {
-			return []snapshot.File{}, nil
+			return []snapshot.WorkflowFile{}, nil
 		}
 		return nil, err
 	}
-	out := []snapshot.File{}
+	out := []snapshot.WorkflowFile{}
 	for _, e := range entries {
 		if e.Type != "file" || !(strings.HasSuffix(e.Path, ".yml") || strings.HasSuffix(e.Path, ".yaml")) {
 			continue
@@ -505,7 +506,11 @@ func (c *Collector) workflows(ctx context.Context, base string) ([]snapshot.File
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, *f)
+		out = append(out, snapshot.WorkflowFile{
+			Path:     f.Path,
+			Content:  f.Content,
+			Evidence: workflowparse.Parse(f.Content),
+		})
 	}
 	return out, nil
 }

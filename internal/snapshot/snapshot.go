@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/jackson-asmith/gh-baseline/internal/workflowparse"
 )
 
 // CurrentSchemaVersion is the schema version written by this build. Increment
 // it whenever the Snapshot or Repo JSON representation changes in a way that
 // would cause an older evaluator to misread a newer snapshot.
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 3
 
 // ObservationState is the data-collection outcome for one field.
 type ObservationState string
@@ -113,8 +115,8 @@ type Repo struct {
 	// necessity rather than by choice. See docs/adr/0002-plan-limited-rulesets.md.
 	RulesetsUnavailable bool `json:"rulesetsUnavailable,omitempty"`
 
-	Workflows  []File `json:"workflows"`
-	Dependabot *File  `json:"dependabot,omitempty"`
+	Workflows  []WorkflowFile `json:"workflows"`
+	Dependabot *File          `json:"dependabot,omitempty"`
 
 	// Secrets names the Actions secrets this repository's workflows can read:
 	// repository and environment secrets, plus organization secrets shared
@@ -143,6 +145,23 @@ type File struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
 }
+
+// WorkflowFile is a collected workflow file: its path, raw content, and
+// domain facts parsed from that content at collection time.
+type WorkflowFile struct {
+	Path     string                 `json:"path"`
+	Content  string                 `json:"content"`
+	Evidence workflowparse.Evidence `json:"evidence"`
+}
+
+// Re-export workflowparse types so callers (checks, tests) import only snapshot.
+type (
+	WorkflowEvidence    = workflowparse.Evidence
+	WorkflowPermissions = workflowparse.Permissions
+	ActionRef           = workflowparse.ActionRef
+	ActionKind          = workflowparse.ActionKind
+	WorkflowSecretRef   = workflowparse.SecretRef
+)
 
 // Field names used as keys in Repo.Errors.
 const (
@@ -244,7 +263,7 @@ type legacyRepo struct {
 	SecurityPolicySource string            `json:"securityPolicySource"`
 	Rules                []Rule            `json:"rules"`
 	RulesetsUnavailable  bool              `json:"rulesetsUnavailable"`
-	Workflows            []File            `json:"workflows"`
+	Workflows            []File            `json:"workflows"` // pre-v3: no Evidence field
 	Dependabot           *File             `json:"dependabot"`
 	Secrets              []string          `json:"secrets"`
 	Errors               map[string]string `json:"errors"`
@@ -259,6 +278,14 @@ func migrateSnapshot(ls legacySnapshot) *Snapshot {
 		Owner:         ls.Owner,
 	}
 	for _, lr := range ls.Repos {
+		workflows := make([]WorkflowFile, len(lr.Workflows))
+		for i, f := range lr.Workflows {
+			workflows[i] = WorkflowFile{
+				Path:     f.Path,
+				Content:  f.Content,
+				Evidence: workflowparse.Parse(f.Content),
+			}
+		}
 		r := Repo{
 			Name:                 lr.Name,
 			DefaultBranch:        lr.DefaultBranch,
@@ -268,7 +295,7 @@ func migrateSnapshot(ls legacySnapshot) *Snapshot {
 			PushedAt:             lr.PushedAt,
 			Rules:                lr.Rules,
 			RulesetsUnavailable:  lr.RulesetsUnavailable,
-			Workflows:            lr.Workflows,
+			Workflows:            workflows,
 			Dependabot:           lr.Dependabot,
 			Secrets:              lr.Secrets,
 			SecurityPolicySource: lr.SecurityPolicySource,

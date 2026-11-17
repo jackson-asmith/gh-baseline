@@ -48,6 +48,29 @@ func TestLoadMigratesVersion0(t *testing.T) {
 	}
 }
 
+func TestLoadMigratesVersion2WorkflowEvidence(t *testing.T) {
+	// A v2 snapshot has Workflows as plain {path, content} without evidence.
+	content := `{"schemaVersion":2,"owner":"acme","repos":[{"name":"api","defaultBranch":"main","workflows":[{"path":".github/workflows/ci.yml","content":"on: push\npermissions:\n  contents: read\njobs: {}\n"}],"rules":null,"secrets":null}]}`
+	p := filepath.Join(t.TempDir(), "snap.json")
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := snapshot.Load(p)
+	if err != nil {
+		t.Fatalf("Load should migrate a v2 snapshot: %v", err)
+	}
+	if len(s.Repos[0].Workflows) != 1 {
+		t.Fatalf("got %d workflows, want 1", len(s.Repos[0].Workflows))
+	}
+	wf := s.Repos[0].Workflows[0]
+	if wf.Evidence.Permissions == nil {
+		t.Error("Evidence.Permissions is nil after migration; expected non-nil (workflow declares permissions)")
+	}
+	if len(wf.Evidence.Triggers) == 0 || wf.Evidence.Triggers[0] != "push" {
+		t.Errorf("Evidence.Triggers = %v, want [push]", wf.Evidence.Triggers)
+	}
+}
+
 func TestSaveStampsSchemaVersion(t *testing.T) {
 	s := &snapshot.Snapshot{
 		Owner:       "acme",

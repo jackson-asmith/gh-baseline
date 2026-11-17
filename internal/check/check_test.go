@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackson-asmith/gh-baseline/internal/baseline"
 	"github.com/jackson-asmith/gh-baseline/internal/snapshot"
+	"github.com/jackson-asmith/gh-baseline/internal/workflowparse"
 )
 
 var now = time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
@@ -45,6 +46,11 @@ func checksRule(sources ...*int64) snapshot.Rule {
 
 func ptr[T any](v T) *T { return &v }
 
+// wf builds a WorkflowFile with its Evidence populated from Content.
+func wf(path, content string) snapshot.WorkflowFile {
+	return snapshot.WorkflowFile{Path: path, Content: content, Evidence: workflowparse.Parse(content)}
+}
+
 // healthy is a public repo that passes every check in the "ci" tier.
 func healthy() snapshot.Repo {
 	avail := func(v snapshot.FeatureState) snapshot.Observation[snapshot.FeatureState] {
@@ -66,10 +72,10 @@ func healthy() snapshot.Repo {
 			rule("pull_request", map[string]any{}),
 			checksRule(ptr(int64(15368))),
 		},
-		Workflows: []snapshot.File{{
-			Path:    ".github/workflows/ci.yml",
-			Content: "permissions:\n  contents: read\njobs:\n  a:\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n      - run: echo ${{ secrets.TOKEN }}\n",
-		}},
+		Workflows: []snapshot.WorkflowFile{wf(
+			".github/workflows/ci.yml",
+			"permissions:\n  contents: read\njobs:\n  a:\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n      - run: echo ${{ secrets.TOKEN }}\n",
+		)},
 		Dependabot: &snapshot.File{Path: ".github/dependabot.yml", Content: "updates:\n  - package-ecosystem: github-actions\n"},
 		Secrets:    []string{"TOKEN"},
 	}
@@ -165,10 +171,14 @@ func TestChecks(t *testing.T) {
 			r.VulnReporting = snapshot.Observation[snapshot.FeatureState]{State: snapshot.ObservationAvailable, Value: snapshot.FeatureDisabled}
 		}, ciTier, Fail, "off"},
 
-		{"workflow.token-permissions", "no top-level permissions", func(r *snapshot.Repo) { r.Workflows[0].Content = "jobs: {}\n" }, ciTier, Fail, "ci.yml"},
+		{"workflow.token-permissions", "no top-level permissions", func(r *snapshot.Repo) {
+			r.Workflows[0] = wf(r.Workflows[0].Path, "jobs: {}\n")
+		}, ciTier, Fail, "ci.yml"},
 		{"workflow.token-permissions", "no workflows", func(r *snapshot.Repo) { r.Workflows = nil }, ciTier, Skip, ""},
 
-		{"workflow.pinned-actions", "tag reference", func(r *snapshot.Repo) { r.Workflows[0].Content += "      - uses: actions/cache@v4\n" }, ciTier, Fail, "actions/cache@v4"},
+		{"workflow.pinned-actions", "tag reference", func(r *snapshot.Repo) {
+			r.Workflows[0] = wf(r.Workflows[0].Path, r.Workflows[0].Content+"      - uses: actions/cache@v4\n")
+		}, ciTier, Fail, "actions/cache@v4"},
 
 		{"workflow.dependabot-actions", "no dependabot config", func(r *snapshot.Repo) { r.Dependabot = nil }, ciTier, Fail, "no dependabot.yml"},
 		{"workflow.dependabot-actions", "no actions ecosystem", func(r *snapshot.Repo) { r.Dependabot.Content = "- package-ecosystem: pip\n" }, ciTier, Fail, "github-actions"},
@@ -180,7 +190,7 @@ func TestChecks(t *testing.T) {
 		{"workflow.stale-secrets", "no push date", func(r *snapshot.Repo) { r.PushedAt = time.Time{} }, ciTier, Unknown, "no push date"},
 		{"workflow.stale-secrets", "stale without secrets", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
-			r.Workflows[0].Content = "permissions: {}\n"
+			r.Workflows[0] = wf(r.Workflows[0].Path, "permissions: {}\n")
 		}, ciTier, Pass, "no secrets"},
 		{"workflow.stale-secrets", "referenced secrets don't exist", func(r *snapshot.Repo) {
 			r.PushedAt = now.AddDate(-3, 0, 0)
