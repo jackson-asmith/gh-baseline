@@ -33,3 +33,20 @@ default, and `contents: write` only on the release job.
 - Releasing is a tag push, and every release builds the same way.
 - The release job is the one place with write access, which makes it the
   workflow to review most carefully.
+
+## Amendment, 2026-11-23
+
+Tags v0.7.0 through v0.10.0 were pushed together, and GitHub doesn't start
+workflows when more than three tags are pushed at once, so they never got
+releases. The tag ruleset blocks deleting a tag to push it again, which is the
+protection this project recommends, so that isn't the fix.
+
+`release.yml` now also runs by hand (`workflow_dispatch`) for a tag that exists
+and has no release. It builds and smoke-tests that tag's own code and never
+creates, moves, or deletes a tag. Because the release action doesn't pass
+`--latest`, a release built for an older tag could become "Latest", which is
+what `gh extension install` installs, so a manual run finishes by marking the
+highest version Latest. That job is the second, after the release job, to get
+`contents: write`.
+
+To avoid the gap in the first place, push tags one at a time.

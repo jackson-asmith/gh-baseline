@@ -6,6 +6,12 @@
 - The README and DESIGN.md check tables list `workflow.token-permissions-scope`
   and `workflow.reusable-callee-pinned`, missing since v0.9.0 and v0.10.0.
 
+### CI
+- `release.yml` can be run by hand for an existing tag that has no release,
+  building and smoke-testing that tag's code without touching tags, then
+  marking the highest version Latest. Used to backfill v0.7.0-v0.10.0, whose
+  tags were pushed together and never triggered a release (ADR 0003 amendment).
+
 ### Tests
 - `TestDocsListEveryCheck` fails when either check table and the catalog
   disagree, so a new check can't ship undocumented again.

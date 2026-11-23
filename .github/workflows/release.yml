@@ -2,32 +2,78 @@ name: Release
 
 # Builds binaries for every platform and attaches them to the release, so
 # `gh extension install` downloads a binary instead of needing Go.
+#
+# Pushing a v* tag releases it. A manual run builds a release for a tag that
+# already exists but has none: GitHub doesn't start workflows when more than
+# three tags are pushed at once, and the tag ruleset (rightly) blocks
+# deleting a tag to push it again. A manual run never touches tags.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build a release for, e.g. v0.7.0"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  resolve:
+    name: Resolve tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INPUT_TAG: ${{ inputs.tag }}
+    steps:
+      - id: tag
+        run: |
+          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$tag' isn't a version tag like v1.2.3"
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            # Build only for a tag that exists and has no release yet, so a
+            # manual run can't create a tag or replace a release's binaries.
+            if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --silent; then
+              echo "::error::tag $tag doesn't exist"
+              exit 1
+            fi
+            if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::error::$tag already has a release"
+              exit 1
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   release:
     name: Release
+    needs: resolve
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the release and upload binaries
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.resolve.outputs.tag }}
           persist-credentials: false
       - uses: cli/gh-extension-precompile@76961aa3bd1123d0a6fd42d0a41aca0696937c39 # v2.2.0
         with:
           go_version_file: go.mod
+          release_tag: ${{ needs.resolve.outputs.tag }}
 
   # Installs the release the way a user does and runs it on each OS, so a
   # release with missing or broken binaries fails here instead of for users.
+  # It checks out the released tag, so an older release is tested against
+  # its own fixture and smoke test.
   smoke-test:
     name: Smoke test (${{ matrix.os }})
-    needs: release
+    needs: [resolve, release]
     strategy:
       fail-fast: false
       matrix:
@@ -38,11 +84,32 @@ jobs:
         shell: bash
     env:
       GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.resolve.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.resolve.outputs.tag }}
           persist-credentials: false
       - name: Install the released extension
-        run: gh extension install "$GITHUB_REPOSITORY" --pin "$GITHUB_REF_NAME"
+        run: gh extension install "$GITHUB_REPOSITORY" --pin "$TAG"
       - name: Smoke test
         run: bash .github/smoke-test.sh gh baseline
+
+  # The release action doesn't pass --latest, so a release built for an older
+  # tag can take "Latest", and `gh extension install` installs Latest. After a
+  # manual run, hand Latest back to the highest version.
+  restore-latest:
+    name: Keep the newest version Latest
+    needs: [release, smoke-test]
+    if: always() && github.event_name == 'workflow_dispatch' && needs.release.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # mark a release as Latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: |
+          newest=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 100 --json tagName -q '.[].tagName' | sort -V | tail -1)
+          gh release edit "$newest" -R "$GITHUB_REPOSITORY" --latest
+          echo "Latest: $newest"
