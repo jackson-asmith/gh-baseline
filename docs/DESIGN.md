@@ -111,7 +111,9 @@ pushes.
 | `security.vuln-reporting` | low | Private vulnerability reporting is off (public repos) |
 | `security.security-policy` | low | No `SECURITY.md` in the repo (root, `.github/`, `docs/`) or as a default in the account's public `.github` repo (public repos) |
 | `workflow.token-permissions` | medium | A workflow has no top-level `permissions:` |
+| `workflow.token-permissions-scope` | medium | A workflow grants `permissions: write-all` instead of only the scopes its jobs need |
 | `workflow.pinned-actions` | medium | An action is referenced by tag or branch instead of a commit SHA |
+| `workflow.reusable-callee-pinned` | medium | A job calls a reusable workflow by tag or branch instead of a commit SHA |
 | `workflow.dependabot-actions` | low | Workflows exist but Dependabot doesn't update them |
 | `workflow.stale-secrets` | high | No push in `staleDays` and workflows use secrets that still exist |
 
