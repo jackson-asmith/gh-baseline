@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+- The README and DESIGN.md check tables list `workflow.token-permissions-scope`
+  and `workflow.reusable-callee-pinned`, missing since v0.9.0 and v0.10.0.
+
+### Tests
+- `TestDocsListEveryCheck` fails when either check table and the catalog
+  disagree, so a new check can't ship undocumented again.
+
 ## v0.11.0 — 2026-11-17
 
 ### Changed
